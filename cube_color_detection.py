@@ -66,6 +66,7 @@ for _, color in colors.items():
         color["low"] = tuple(low_high_lists[0])
         color["high"] = tuple(low_high_lists[1])
 
+samples = []
 for name, value in colors.items():
     mask = cv2.inRange(img, value["low"], value["high"])
 
@@ -82,13 +83,77 @@ for name, value in colors.items():
         area = cv2.contourArea(c)
         x,y,w,h = cv2.boundingRect(c)
         if area>1000:
-            print("area", area)
-            # ratio = h/w
-            # print("ratio", ratio)
-            # if 0.8<ratio and ratio<1.2:
-            cv2.rectangle(img_org, (x, y), (x + w, y + h), (255,255,255), 2)
+            # cv2.rectangle(img_org, (x, y), (x + w, y + h), (255,255,255), 2)
+            cv2.drawContours(img_org, [c], -1, (0,255,0), 3)
             cv2.putText(img_org, name, (x, y+10), font, 0.45, (0, 0, 0))
 
+            samples.append({
+                "area": area,
+                "width": w,
+                "height": h,
+                "x": x,
+                "y": y,
+                "color": name,
+                "contour": c
+            })
+
+
+# find top left corner of cube face
+topleft_piece = samples[0].copy()
+
+for sample in samples:
+    if sample["x"] < topleft_piece["x"]:
+        topleft_piece = sample.copy()
+
+for sample in samples:
+    y_difference = sample["y"] - topleft_piece["y"]
+    x_difference = sample["x"] - topleft_piece["x"]
+    if y_difference<0:
+        if x_difference==0 or y_difference==0 or abs(y_difference)/abs(x_difference)>1.5:
+            topleft_piece = sample.copy()
+
+
+# find bottom right corner of cube face
+bottomright_piece = samples[0].copy()
+
+for sample in samples:
+    if sample["x"]+sample["width"] > bottomright_piece["x"]+bottomright_piece["width"]:
+        bottomright_piece = sample.copy()
+
+for sample in samples:
+    y_difference = sample["y"]+sample["height"] - (bottomright_piece["y"]+bottomright_piece["height"])
+    x_difference = sample["x"]+sample["width"] - (bottomright_piece["x"]+bottomright_piece["width"])
+    if y_difference>0 and abs(y_difference)/abs(x_difference)>1.5:
+        bottomright_piece = sample.copy()
+
+topleft_corner = {"x":topleft_piece["x"], "y":topleft_piece["y"]}
+bottomright_corner = {"x":bottomright_piece["x"]+bottomright_piece["width"], "y": bottomright_piece["y"]+bottomright_piece["height"]}
+
+# find centers of pieces to check colors at them
+half_piece_width = abs(bottomright_corner["x"] - topleft_corner["x"]) / 6
+half_piece_height = abs(topleft_corner["y"] - bottomright_corner["y"]) / 6
+
+centers = []
+for y in range(1, 7, 2):
+    for x in range(1, 7, 2):
+        centers.append({
+            "x": int(topleft_corner["x"]+x*half_piece_width),
+            "y": int(topleft_corner["y"]+y*half_piece_height)
+        })
+
+# determine the color for each center
+for center in centers:
+    cv2.rectangle(img_org, (center["x"], center["y"]), (center["x"]+5, center["y"]+5), (255,255,255), 2)
+    for sample in samples:
+        is_in_contour = cv2.pointPolygonTest(sample["contour"], (center["x"], center["y"]), True)
+        if is_in_contour>0:
+            center.update({"color": sample["color"]})
+
+# this will crash if the cube is rotated way too much
+try:
+    print("centers", [center["color"] for center in centers])
+except:
+    print("please don't hold the cube diagonally")
 
 cv2.imshow('img_org',img_org)
 cv2.waitKey()
