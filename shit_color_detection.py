@@ -16,20 +16,30 @@ cv2.setTrackbarPos('high','image', 200)
 img_org = None
 # set this smallest var to [0, 0, 0] when checking for the highest hsv values for a certain color, and then just run the code and keep clicking allaround that color
 # also change akbar and asghar > and < inside mouseRGB
-smallest = [1000, 1000, 1000]
+highest = True
+extreme = [0, 0, 0]
+if not highest:
+    extreme = [1000, 1000, 1000]
 
 def mouseRGB(event,x,y,flags,param):
     global img_org
-    global smallest
+    global extreme
     if event == cv2.EVENT_LBUTTONDOWN: #checks mouse left button down condition
         h = img_org[y,x,0]
-        smallest[0] = h if h < smallest[0] else smallest[0]
         s = img_org[y,x,1]
-        smallest[1] = s if s < smallest[1] else smallest[1]
         v = img_org[y,x,2]
-        smallest[2] = v if v < smallest[2] else smallest[2]
-        print(h, s, v)
-        print(smallest)
+
+        if highest:
+            extreme[0] = h if h > extreme[0] else extreme[0]
+            extreme[1] = s if s > extreme[1] else extreme[1]
+            extreme[2] = v if v > extreme[2] else extreme[2]
+        else:
+            extreme[0] = h if h < extreme[0] else extreme[0]
+            extreme[1] = s if s < extreme[1] else extreme[1]
+            extreme[2] = v if v < extreme[2] else extreme[2]
+
+        print("clicked", h, s, v)
+        print("current extreme", extreme)
 
 cv2.setMouseCallback('image',mouseRGB)
 
