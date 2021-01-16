@@ -1,6 +1,107 @@
 import cv2
 import sys
 font = cv2.FONT_HERSHEY_COMPLEX
+import time
+
+# time variables to add a delay between readings of cube faces initially only
+delay = 2.0
+previous_time = 0
+
+# arrow variables for when instructing person to flip cube
+arrow = 30
+thiccness = 5
+color = (0, 255, 0)
+stroke_color = (0, 0, 255)
+stroke_thiccness = 3
+def draw_arrow(img, center, direction, reach):
+    # deciding start/ending points
+    # for straight line
+    if direction=="up" or direction=="down":
+        coef = 1 if direction=="up" else -1
+        starting_point = (int(center[0]), int(center[1]+coef*reach))
+        ending_point = (int(center[0]), int(center[1]-coef*reach))
+
+        # arrows starting points
+        arrow1_starting_point = (int(ending_point[0]-arrow), int(ending_point[1]+coef*arrow))
+        arrow2_starting_point = (int(ending_point[0]+arrow), int(ending_point[1]+coef*arrow))
+
+    if direction=="right" or direction=="left":
+        coef = 1 if direction=="right" else -1
+        starting_point = (int(center[0]-coef*reach), int(center[1]))
+        ending_point = (int(center[0]+coef*reach), int(center[1]))
+
+        # arrows starting points
+        arrow1_starting_point = (int(ending_point[0]-coef*arrow), int(ending_point[1]-arrow))
+        arrow2_starting_point = (int(ending_point[0]-coef*arrow), int(ending_point[1]+arrow))
+
+    # stroke
+    # straight line
+    img = cv2.line(img, starting_point, ending_point, stroke_color, thiccness+stroke_thiccness)
+    # wings
+    img = cv2.line(img, arrow1_starting_point, ending_point, stroke_color, thiccness+stroke_thiccness)
+    img = cv2.line(img, arrow2_starting_point, ending_point, stroke_color, thiccness+stroke_thiccness)
+
+    # straight line
+    img = cv2.line(img, starting_point, ending_point, color, thiccness)
+    # wings
+    img = cv2.line(img, arrow1_starting_point, ending_point, color, thiccness)
+    img = cv2.line(img, arrow2_starting_point, ending_point, color, thiccness)
+
+    return img
+
+
+def draw_three_arrows(img, direction, center, half_piece_width, reach):
+    side1_center = None
+    side2_center = None
+    if direction=="right" or direction=="left":
+        side1_center = (center[0], center[1]-half_piece_width*2)
+        side2_center = (center[0], center[1]+half_piece_width*2)
+    elif direction=="up" or direction=="down":
+        side1_center = (center[0]-half_piece_width*2, center[1])
+        side2_center = (center[0]+half_piece_width*2, center[1])
+
+    # center arrow
+    img = draw_arrow(img, center, direction, reach)
+    # side 1 arrow
+    img = draw_arrow(img, side1_center, direction, reach)
+    # side 2 arrow
+    img = draw_arrow(img, side2_center, direction, reach)
+
+    return img
+
+
+def are_these_faces_identical(face1, face2):
+
+    # check face upright
+    if face1 == face2:
+        return True
+
+    # check face upside down
+    upside_down_face = [face2[8], face2[7], face2[6],
+                        face2[5], face2[4], face2[3],
+                        face2[2], face2[1], face2[0]]
+
+    if face1 == upside_down_face:
+        return True
+
+    # check face sleeping on its right
+    sleeping_on_right_face = [face2[6], face2[3], face2[0],
+                            face2[7], face2[4], face2[1],
+                            face2[8], face2[5], face2[2]]
+
+    if face1 == sleeping_on_right_face:
+        return True
+
+    # check face sleeping on its left
+    sleeping_on_left_face = [face2[2], face2[5], face2[8],
+                            face2[1], face2[4], face2[7],
+                            face2[0], face2[3], face2[6]]
+
+    if face1 == sleeping_on_left_face:
+        return True
+
+    return False
+
 
 cv2.namedWindow('img_org')
 cap = cv2.VideoCapture(1)
@@ -15,67 +116,50 @@ colors = {
     },
     "blue":{
         "representation": (0, 0, 255),
-        "ranges": [{"low":(70, 85, 80), "high": (120, 255, 255)}] # other suggestion {"low":(110, 150, 50), "high": (120, 255, 255)}
+        "ranges": [{"low":(70, 85, 90), "high": (120, 255, 255)}] # other suggestion {"low":(110, 150, 50), "high": (120, 255, 255)}
     },
     "green":{
         "representation": (0, 255, 0),
-        "ranges": [{"low":(44, 120, 72), "high": (80, 255, 255)}]
+        "ranges": [{"low":(44, 100, 72), "high": (80, 255, 255)}]
     },
     "yellow":{
         "representation": (255, 255, 0),
-        "ranges": [{"low":(25, 150, 160), "high": (40, 255, 255)}]
+        "ranges": [{"low":(25, 130, 120), "high": (43, 255, 255)}]
     },
     "white":{
         "representation": (255, 255, 255),
-        "ranges": [{"low":(0, 0, 140), "high": (90, 106, 249)}]
+        "ranges": [{"low":(0, 0, 120), "high": (95, 106, 249)}]
     },
     "orange":{
         "representation": (255, 165, 0),
-        "ranges": [{"low":(5, 80, 170), "high": (21, 255, 255)}]
+        "ranges": [{"low":(5, 80, 150), "high": (21, 255, 255)}]
     }
 }
-# color = "blue"
-# previous_low = colors[color]["ranges"][0]["low"]
-# previous_high = colors[color]["ranges"][0]["high"]
 
 def mouseRGB(event,x,y,flags,param):
     global img
-    global colors
-    global previous_low
-    global previous_high
     h = img[y,x,0]
     s = img[y,x,1]
     v = img[y,x,2]
     if event == cv2.EVENT_RBUTTONDOWN:
         print("hsv here", h, s, v)
-    elif event == cv2.EVENT_LBUTTONDOWN: #checks mouse left button down condition
-
-        low = list(colors[color]["ranges"][0]["low"])
-        high = list(colors[color]["ranges"][0]["high"])
-        if h < low[0]:
-            low[0] = h
-        if s < low[1]:
-            low[1] = s
-        if v < low[2]:
-            low[2] = v
-
-        if h > high[0]:
-            high[0] = h
-        if s > high[1]:
-            high[1] = s
-        if v > high[2]:
-            high[2] = v
-
-        colors[color]["ranges"][0]["low"] = tuple(low)
-        colors[color]["ranges"][0]["high"] = tuple(high)
-
-        #print("color", color, "lowest", colors[color]["ranges"][0]["low"], "highest", colors[color]["ranges"][0]["high"])
 
 cv2.setMouseCallback('img_org',mouseRGB)
+previous_detection = {
+    "colors of pieces": None,
+    "centers": None,
+    "entire cube state": [],
+    "x half piece width": None,
+    "y half piece width": None
+}
+previous_print = ""
+recurrences = 0
+confident_reccurance_count = 10
 
 while True:
     # Capture frame-by-frame
-    ret, img_org = cap.read()
+    ret, imgo = cap.read()
+    img_org = imgo.copy()
     #img_org = cv2.imread(sys.argv[1])
     img = cv2.cvtColor(img_org, cv2.COLOR_BGR2HSV)
 
@@ -116,6 +200,7 @@ while True:
                         "contour": c
                     })
 
+    # if we actually detected big enough colors
     if len(samples)>0:
         # find top left corner of cube face
         topleft_piece = samples[0].copy()
@@ -152,32 +237,101 @@ while True:
         half_piece_width = abs(bottomright_corner["x"] - topleft_corner["x"]) / 6
         half_piece_height = abs(topleft_corner["y"] - bottomright_corner["y"]) / 6
 
-        centers = []
-        for y in range(1, 7, 2):
-            for x in range(1, 7, 2):
-                centers.append({
-                    "x": int(topleft_corner["x"]+x*half_piece_width),
-                    "y": int(topleft_corner["y"]+y*half_piece_height)
-                })
+        # if cube is way too small nahhhh, and if it's not square ish nahhhh
+        ratio = half_piece_width/half_piece_height if half_piece_height != 0 else 0
+        #print("ratio", ratio, "half_piece_width", half_piece_width, "half_piece_height", half_piece_height)
+        minimum_distance_between_centers = 35
+        if half_piece_width<minimum_distance_between_centers or half_piece_height<minimum_distance_between_centers or ratio > 1.2 or ratio < 0.8:
+            # print an unpainted image since nothing promising was detected
+            cv2.imshow('img_org',imgo)
+        else:
 
-        # determine the color for each center
-        for center in centers:
-            cv2.rectangle(img_org, (center["x"], center["y"]), (center["x"]+5, center["y"]+5), (255,255,255), 2)
-            for sample in samples:
-                is_in_contour = cv2.pointPolygonTest(sample["contour"], (center["x"], center["y"]), True)
-                if is_in_contour>0:
-                    center.update({"color": sample["color"]})
+            # calculate the proper position for centers
+            centers = []
+            for y in range(1, 7, 2):
+                for x in range(1, 7, 2):
+                    centers.append({
+                        "x": int(topleft_corner["x"]+x*half_piece_width),
+                        "y": int(topleft_corner["y"]+y*half_piece_height)
+                    })
 
-        # this will crash if the cube is rotated way too much
-        try:
-            print("centers", [center["color"] for center in centers])
-        except:
-            print("please don't hold the cube diagonally")
-    # else:
-        # print("no cube detected")
+            # determine the color for each center
+            for center in centers:
+                cv2.rectangle(img_org, (center["x"], center["y"]), (center["x"]+5, center["y"]+5), (255,255,255), 2)
+                for sample in samples:
+                    is_in_contour = cv2.pointPolygonTest(sample["contour"], (center["x"], center["y"]), True)
+                    if is_in_contour>0:
+                        center.update({"color": sample["color"]})
 
-    # display image as preview
-    cv2.imshow('img_org',img_org)
+            # this will crash if the cube is rotated way too much
+            try:
+                face_has_changed = False
+                current_detection_colors = [center["color"] for center in centers]
+                if current_detection_colors == previous_detection["colors of pieces"]:
+
+                    recurrences += 1
+                    if recurrences >= confident_reccurance_count:
+                        # if cube colors have occured five times in a row then they're correct
+                        colors_print = "centers " + str(current_detection_colors)
+                        if previous_print != colors_print:
+                            print(colors_print)
+                            previous_print = colors_print
+                            face_has_changed = True
+                        recurrences = 0
+
+                else:
+                    recurrences = 0
+                    previous_detection["centers"] = centers.copy()
+                    previous_detection["colors of pieces"] = current_detection_colors.copy()
+                    previous_detection["x half piece width"] = half_piece_width
+                    previous_detection["y half piece width"] = half_piece_height
+
+
+                # print the proposed solution to the current face
+                faces_registered = len(previous_detection["entire cube state"])
+                if faces_registered < 6:
+
+                    # when registering faces, use a delay to give the user time to flip the cube without misreading the faces
+                    current_time = time.time()
+                    if current_time > previous_time + delay:
+                        # save current time for next check
+                        previous_time = current_time
+                        # append current face if all gucci
+                        if not face_already_read:
+                            previous_detection["entire cube state"].append(previous_detection["colors of pieces"])
+
+                    # check if face has alrdy been read
+                    face_already_read = False
+                    for face in previous_detection["entire cube state"]:
+                            if are_these_faces_identical(face, previous_detection["colors of pieces"]):
+                                face_already_read = True
+                                break
+
+                    if faces_registered <= 3:
+                        # draw three arrows facing to the right
+                        # first determine the reach
+                        extra_arrow_overshoot = 0.5 * half_piece_width
+                        reach = half_piece_width*2 + extra_arrow_overshoot
+
+                        img_org = draw_three_arrows(img_org, "right", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+                    if faces_registered == 4:
+                        img_org = draw_three_arrows(img_org, "up", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+                    if faces_registered == 5:
+                        img_org = draw_three_arrows(img_org, "down", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+
+                else:
+                    print("faces_registered", len(previous_detection["entire cube state"]), "are", "\n\n\n\n", previous_detection["entire cube state"])
+            except:
+                pass
+
+            # display image as preview
+            cv2.imshow('img_org',img_org)
+    else:
+        # if previous_print != "no cube detected":
+        #     print("no cube detected")
+        #     previous_print = "no cube detected"
+        # print an unpainted image since nothing promising was detected
+        cv2.imshow('img_org',imgo)
 
     # check  for exits
     if cv2.waitKey(1) & 0xFF == ord('q'):
