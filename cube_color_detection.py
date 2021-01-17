@@ -4,7 +4,7 @@ font = cv2.FONT_HERSHEY_COMPLEX
 import time
 
 # time variables to add a delay between readings of cube faces initially only
-delay = 2.0
+delay = 0.25
 previous_time = 0
 
 # arrow variables for when instructing person to flip cube
