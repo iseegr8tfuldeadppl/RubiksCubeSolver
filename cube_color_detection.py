@@ -233,7 +233,7 @@ while True:
         topleft_corner = {"x":topleft_piece["x"], "y":topleft_piece["y"]}
         bottomright_corner = {"x":bottomright_piece["x"]+bottomright_piece["width"], "y": bottomright_piece["y"]+bottomright_piece["height"]}
 
-        # find centers of pieces to check colors at them
+        # find centers of pieces to check which contours of colors occupy that center
         half_piece_width = abs(bottomright_corner["x"] - topleft_corner["x"]) / 6
         half_piece_height = abs(topleft_corner["y"] - bottomright_corner["y"]) / 6
 
@@ -259,11 +259,13 @@ while True:
             for center in centers:
                 cv2.rectangle(img_org, (center["x"], center["y"]), (center["x"]+5, center["y"]+5), (255,255,255), 2)
                 for sample in samples:
+
+                    # does this center reside within this color's detected contour?
                     is_in_contour = cv2.pointPolygonTest(sample["contour"], (center["x"], center["y"]), True)
                     if is_in_contour>0:
                         center.update({"color": sample["color"]})
 
-            # this will crash if the cube is rotated way too much
+            # this will catch an error if the cube is diagonal way too much
             try:
                 face_has_changed = False
                 current_detection_colors = [center["color"] for center in centers]
