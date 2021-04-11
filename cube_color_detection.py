@@ -2,9 +2,20 @@ import cv2
 import sys
 font = cv2.FONT_HERSHEY_COMPLEX
 import time
+from colors import colors
+from colors import day_colors as colors
+from drawerr import draw_cube
+import numpy as np
+from convert_pieces_to_kociemba import get_sol, correct_face
+
+def rotate_image(image, angle):
+  image_center = tuple(np.array(image.shape[1::-1]) / 2)
+  rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+  result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+  return result
 
 # time variables to add a delay between readings of cube faces initially only
-delay = 0.25
+delay = 1
 previous_time = 0
 
 # arrow variables for when instructing person to flip cube
@@ -70,6 +81,9 @@ def draw_three_arrows(img, direction, center, half_piece_width, reach):
     return img
 
 
+def are_these_faces_oorientally_identical(face1, face2):
+    return face1 == face2
+
 def are_these_faces_identical(face1, face2):
 
     # check face upright
@@ -104,37 +118,11 @@ def are_these_faces_identical(face1, face2):
 
 
 cv2.namedWindow('img_org')
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture("http://192.168.1.57:8080/video")
+#cap = cv2.VideoCapture(1)
 
 img_org = None
 img = None
-
-colors = {
-    "red":{
-        "representation": (255, 0, 0),
-        "ranges": [{"low":(0, 180, 150), "high": (3, 255, 255)}, {"low":(165, 65, 70), "high": (185, 255, 255)}]
-    },
-    "blue":{
-        "representation": (0, 0, 255),
-        "ranges": [{"low":(70, 85, 90), "high": (120, 255, 255)}] # other suggestion {"low":(110, 150, 50), "high": (120, 255, 255)}
-    },
-    "green":{
-        "representation": (0, 255, 0),
-        "ranges": [{"low":(44, 100, 72), "high": (80, 255, 255)}]
-    },
-    "yellow":{
-        "representation": (255, 255, 0),
-        "ranges": [{"low":(25, 130, 120), "high": (43, 255, 255)}]
-    },
-    "white":{
-        "representation": (255, 255, 255),
-        "ranges": [{"low":(0, 0, 120), "high": (95, 106, 249)}]
-    },
-    "orange":{
-        "representation": (255, 165, 0),
-        "ranges": [{"low":(5, 80, 150), "high": (21, 255, 255)}]
-    }
-}
 
 def mouseRGB(event,x,y,flags,param):
     global img
@@ -154,12 +142,34 @@ previous_detection = {
 }
 previous_print = ""
 recurrences = 0
-confident_reccurance_count = 10
+confident_reccurance_count = 15
+
+pieces = [
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"],
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"],
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"],
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"],
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"],
+    ["white", "white", "white", "white", "white", "white", "white", "white", "white"]
+]
+
+# pieces = [
+#     ["orange", "blue", "green", "yellow", "orange", "orange", "orange", "green", "orange"], #left
+#     ["white", "red", "red", "yellow", "green", "orange", "blue", "yellow", "red"], #front
+#     ["blue", "red", "green", "green", "red", "white", "blue", "red", "red"], #right
+#     ["red", "blue", "yellow", "blue", "blue", "green", "yellow", "white", "yellow"], #back
+#     ["white", "white", "orange", "green", "white", "orange", "white", "yellow", "blue"], # up # needs to be flipped
+#     ["green", "orange", "green", "blue", "yellow", "white", "yellow", "red", "white"] # down # needs to be flipped
+# ]
+
+l = (15, 15)
 
 while True:
     # Capture frame-by-frame
     ret, imgo = cap.read()
+    imgo = rotate_image(imgo, -90)
     img_org = imgo.copy()
+
     #img_org = cv2.imread(sys.argv[1])
     img = cv2.cvtColor(img_org, cv2.COLOR_BGR2HSV)
 
@@ -167,7 +177,7 @@ while True:
     samples = []
     for name, value in colors.items():
         for each_range in value["ranges"]:
-            mask = cv2.inRange(img, each_range["low"], each_range["high"])
+            mask = cv2.inRange(img, each_range["min"], each_range["max"])
 
             # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
             # close = cv2.morphologyEx(target, cv2.MORPH_CLOSE, kernel, iterations=1)
@@ -270,7 +280,6 @@ while True:
                 face_has_changed = False
                 current_detection_colors = [center["color"] for center in centers]
                 if current_detection_colors == previous_detection["colors of pieces"]:
-
                     recurrences += 1
                     if recurrences >= confident_reccurance_count:
                         # if cube colors have occured five times in a row then they're correct
@@ -289,51 +298,69 @@ while True:
                     previous_detection["y half piece width"] = half_piece_height
 
 
-                # print the proposed solution to the current face
-                faces_registered = len(previous_detection["entire cube state"])
-                if faces_registered < 6:
-
-                    # when registering faces, use a delay to give the user time to flip the cube without misreading the faces
-                    current_time = time.time()
-                    if current_time > previous_time + delay:
-                        # save current time for next check
-                        previous_time = current_time
-                        # append current face if all gucci
-                        if not face_already_read:
-                            previous_detection["entire cube state"].append(previous_detection["colors of pieces"])
+                if face_has_changed:
 
                     # check if face has alrdy been read
                     face_already_read = False
                     for face in previous_detection["entire cube state"]:
-                            if are_these_faces_identical(face, previous_detection["colors of pieces"]):
-                                face_already_read = True
-                                break
+                        if are_these_faces_identical(face, previous_detection["colors of pieces"]):
+                            face_already_read = True
+                            break
 
-                    if faces_registered <= 3:
-                        # draw three arrows facing to the right
-                        # first determine the reach
-                        extra_arrow_overshoot = 0.5 * half_piece_width
-                        reach = half_piece_width*2 + extra_arrow_overshoot
+                    # when registering faces, use a delay to give the user time to flip the cube without misreading the faces
+                    # current_time = time.time()
+                    # if current_time > previous_time + delay:
+                    #     # save current time for next check
+                    #     previous_time = current_time
+                    #     # append current face if all gucci
+                    if not face_already_read:
+                        previous_detection["entire cube state"].append(previous_detection["colors of pieces"])
 
-                        img_org = draw_three_arrows(img_org, "right", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
-                    if faces_registered == 4:
-                        img_org = draw_three_arrows(img_org, "up", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
-                    if faces_registered == 5:
-                        img_org = draw_three_arrows(img_org, "down", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+                    # print the proposed solution to the current face
+                    faces_registered = len(previous_detection["entire cube state"])
+                    if faces_registered < 6:
 
-                else:
-                    print("faces_registered", len(previous_detection["entire cube state"]), "are", "\n\n\n\n", previous_detection["entire cube state"])
-            except:
+                        if faces_registered <= 3:
+                            # draw three arrows facing to the right
+                            # first determine the reach
+                            extra_arrow_overshoot = 0.5 * half_piece_width
+                            reach = half_piece_width*2 + extra_arrow_overshoot
+
+                            img_org = draw_three_arrows(img_org, "right", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+                        if faces_registered == 4:
+                            img_org = draw_three_arrows(img_org, "up", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+                        if faces_registered == 5:
+                            img_org = draw_three_arrows(img_org, "down", (centers[4]["x"], centers[4]["y"]), half_piece_width, reach)
+
+                    else:
+                        #print("faces_registered", len(previous_detection["entire cube state"]), "are", "\n\n\n\n", previous_detection["entire cube state"])
+                        print("broo")
+                        try:
+                            # prepare dummy cube
+                            previous_detection["entire cube state"][4] = correct_face(previous_detection["entire cube state"][4], clockwise=True).copy() #fix U
+                            previous_detection["entire cube state"][5] = correct_face(previous_detection["entire cube state"][5], clockwise=False).copy() #fix D
+                            print("done", get_sol(previous_detection["entire cube state"]))
+                        except Exception as e:
+                            print("err", e)
+                        print("done")
+                        break
+            except Exception as e:
                 pass
+                #print("error", e)
 
             # display image as preview
             cv2.imshow('img_org',img_org)
     else:
+
+        # draw dummy cube
+        imgo = draw_cube(imgo, left=pieces[0], front=pieces[1], right=pieces[2], back=pieces[3], up=pieces[4], down=pieces[5], location=l)
+
         # if previous_print != "no cube detected":
         #     print("no cube detected")
         #     previous_print = "no cube detected"
         # print an unpainted image since nothing promising was detected
         cv2.imshow('img_org',imgo)
+
 
     # check  for exits
     if cv2.waitKey(1) & 0xFF == ord('q'):

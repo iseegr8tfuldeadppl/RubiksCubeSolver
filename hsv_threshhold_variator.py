@@ -1,67 +1,101 @@
 import numpy as np
 import cv2
+from colors import colors, day_colors
 def nothing(x):
     pass
 
-img = cv2.imread("1.jpg")
+img = cv2.imread("samples/1.jpg")
 
 img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
 
 cv2.namedWindow('image')
-cv2.createTrackbar('H','image',0,180,nothing)
-cv2.createTrackbar('S','image',0,255,nothing)
-cv2.createTrackbar('V','image',0,255,nothing)
+cv2.namedWindow('imge')
+cv2.createTrackbar('min H','image',0,180,nothing)
+cv2.createTrackbar('min S','image',0,255,nothing)
+cv2.createTrackbar('min V','image',0,255,nothing)
+cv2.createTrackbar('max H','imge',0,180,nothing)
+cv2.createTrackbar('max S','imge',0,255,nothing)
+cv2.createTrackbar('max V','imge',0,255,nothing)
 
 h, s, v = (0, 0, 0)
-def updateBars(bars):
-    h, s, v = bars
-    cv2.setTrackbarPos('H','image', h)
-    cv2.setTrackbarPos('S','image', s)
-    cv2.setTrackbarPos('V','image', v)
+def updateBars(low, high):
+    h, s, v = low
+    cv2.setTrackbarPos('min H','image', h)
+    cv2.setTrackbarPos('min S','image', s)
+    cv2.setTrackbarPos('min V','image', v)
+    h, s, v = high
+    cv2.setTrackbarPos('max H','imge', h)
+    cv2.setTrackbarPos('max S','imge', s)
+    cv2.setTrackbarPos('max V','imge', v)
 
-# orange
-orange = (7, 173, 255)
-# range wide=10, wide2=50, wide3=50
+color = day_colors["white"]["ranges"][0]
+low = color["min"]
+high = color["max"]
 
-# blue
-blue = (99, 209, 205)
-# range wide=10, wide2=50, wide3=50
+updateBars(low, high)
 
-# yellow
-yellow = (35, 156, 222)
-# range wide=10, wide2=50, wide3=50
+def mouseRGB(event,x,y,flags,param):
+    global img
+    global low, high
+    h = img[y,x,0]
+    s = img[y,x,1]
+    v = img[y,x,2]
+    h = int(h*180/255)
+    s = int(s)
+    v = int(v)
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print("adding hsv here", h, s, v)
 
-# green
-green = (61, 178, 206)
-green = (61, 144, 206)
-# range wide=10, wide2=50, wide3=50
+        new_min = list(low)
+        if h<low[0]:
+            new_min[0] = h
+        if s<low[1]:
+            new_min[1] = s
+        if v<low[2]:
+            new_min[2] = v
 
-# white
-white = (17, 0, 203)
-white = (96, 0, 203)
-# range wide=10, wide2=50, wide3=50
+        low = tuple(new_min)
 
-# red
-red = (173, 125, 228)
-# range wide=10, wide2=50, wide3=50
+        new_max = list(high)
+        if h>high[0]:
+            new_max[0] = h
+        if s>high[1]:
+            new_max[1] = s
+        if v>high[2]:
+            new_max[2] = v
 
-updateBars(white)
-wide = 10
-wide2 = 50
-wide3 = 30
+        high = tuple(new_max)
+
+        updateBars(low, high)
+
+import numpy as np
+
+def rotate_image(image, angle):
+  image_center = tuple(np.array(image.shape[1::-1]) / 2)
+  rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+  result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+  return result
+
+#cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture("http://192.168.1.57:8080/video")
 while True:
-    mask = cv2.inRange(img, (h-wide, s-wide2, v-wide3), (h+wide, s+wide2, v+wide3))
+    ret, img = cap.read()
+    img = rotate_image(img, -90)
+    cv2.imshow('imge',img)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(img, low, high)
     target = cv2.bitwise_and(img,img, mask=mask)
 
-    cv2.imshow('image',target)
-    h = cv2.getTrackbarPos('H','image')
-    s = cv2.getTrackbarPos('S','image')
-    v = cv2.getTrackbarPos('V','image')
+    cv2.imshow('image',mask)
+    #cv2.imshow('img',img)
+    cv2.setMouseCallback('imge',mouseRGB)
+    low = (cv2.getTrackbarPos('min H','image'), cv2.getTrackbarPos('min S','image'), cv2.getTrackbarPos('min V','image'))
+    high = (cv2.getTrackbarPos('max H','imge'), cv2.getTrackbarPos('max S','imge'), cv2.getTrackbarPos('max V','imge'))
 
     k = cv2.waitKey(1) & 0xFF
     if k == 27:
         break
 
-print("hsv", h, s, v)
+print("min:", low, ",max:", high)
 cv2.destroyAllWindows()
