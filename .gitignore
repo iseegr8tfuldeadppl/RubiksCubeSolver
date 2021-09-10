@@ -1,3 +1,6 @@
-samples
-*.png
-*.pyc
+Best_F2L_Algorithms.pdf
+*.stl
+*.gcode
+*.3ml
+/some cube vids in here and backups
+*.mp4
