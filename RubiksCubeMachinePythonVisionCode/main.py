@@ -16,29 +16,49 @@ sets_of_points = []
 flying_point = None
 filename = "contours.pickle"
 hsvs = []
-
 '''
-yellow_references = ["lightseagreen", "lightgreen", "aquamarine", "lightgreen", "mediumaquamarine", "aquamarine"]
-blue_references = ["maroon"]
-green_references = ["darkolivegreen", "darkgreen"]
-orange_references = ["cornflowerblue", "royalblue", "lightskyblue"]
-red_references = ["midnightblue", "slateblue", "slategray", "darkslateblue"]
-white_references = ["blanchedalmond", "palegoldenrod", "wheat", "bisque", "lemonchiffon", "lightgoldenrodyellow", "rosybrown", "gray"]
+print("How to use:")
+print("")
+print("")
+print("Left Click to start creating a contour\ndraw the points where ever you want")
+print("  and then to close the contour Right Click and the code will automatically start")
+print("  displaying its predicted color + its index in the contours array")
+print("")
+print("")
+print("Right click on a contour to Enable or Disable reporting of the dominant colors inside it")
+print("  that is being displayed inside the color ranges window (disignated by half height white boxes")
+print("  drawn always on the red color bar)")
+print("  (disabled contours are colored green and enabled contours are colored black)")
+print("")
+print("")
+print("Right click away from all contours to start a reordering process where you can Left Click all of the")
+print("  contours sequentially to put them in the order you want inside the contours array in order to code")
+print("  relative to the array's indexes, once you have selected all of the contours right click again away from")
+print("  any contour and the new order will be applied")
+print("  (selected contours will be colored green during selection)")
+print("")
+print("")
+print("The color range selection GUI is split vertically onto three parts, H and S and V and each line")
+print("  contains the value for each of the six colors")
+print("  each color has two knobs that you can drag left and right to adjust the limits (except for red ")
+print("  it has four knobs in order to adjust two ranges because that seems to work better")
+print("")
+print("")
+print("Everything is saved inside pickle files in the project directory")
 '''
-yellow_references = []
-blue_references = ["maroon"]
-green_references = []
-orange_references = []
-red_references = []
-white_references = []
 
+
+def reinit_color_occurencies():
+    global color_occurencies_in_contours
+    color_occurencies_in_contours = [ [0, 0, 0, 0, 0, 0] for i in range(0, len(sets_of_points))]
+
+color_occurencies_in_contours = []
 try:
     with open(filename, "rb") as f:
         sets_of_points = pickle.load(f)
+        reinit_color_occurencies()
 except:
     pass
-
-
 colors_filename = "colors.pickle"
 width = 1000
 height = 30
@@ -55,7 +75,6 @@ try:
 except:
     from colors import colors as temp
     colors = temp
-
 
 selected_color_index = -1
 selected_range_index = -1
@@ -219,11 +238,25 @@ def get_dominant_color(image, k=4, image_processing_size = None):
     return clt.cluster_centers_ 
 
 
+reordering = False
+new_contours_order = []
+
+
+
 # mouse callback function
 def line_drawing(event, x, y, flags, param):
-    global drawing, flying_point, sets_of_points, hsvs
+    global drawing, flying_point, sets_of_points, hsvs, reordering, new_contours_order
 
     if event==cv2.EVENT_LBUTTONDOWN:
+
+        if reordering:
+            for contour in sets_of_points:
+                result = cv2.pointPolygonTest(contour["points"], (x,y), False) 
+                if result>=0: # click is on the line of the contour or inside it
+                    if not contour in new_contours_order:
+                        new_contours_order.append(contour)
+            return
+
         if not drawing:
             # if we're creating a new contour create one
             sets_of_points.append({"enabled":False, "points": []})
@@ -239,12 +272,13 @@ def line_drawing(event, x, y, flags, param):
         else:
             # confirm if we're trying to delete a contour
             for contour in sets_of_points:
-                result = cv2.pointPolygonTest(np.array(contour["points"]), (x,y), False) 
+                result = cv2.pointPolygonTest(contour["points"], (x,y), False) 
                 if result>=0: # click is on the line of the contour or inside it
                     sets_of_points.remove(contour)
 
         with open(filename, "wb") as f:
             pickle.dump(sets_of_points, f)
+            reinit_color_occurencies()
 
     elif event==cv2.EVENT_RBUTTONDOWN:
         if drawing: # if right click happened during drawing that means we need to close the contour
@@ -255,19 +289,44 @@ def line_drawing(event, x, y, flags, param):
                 sets_of_points.pop()
             else: # else accept it as a new contour
                 sets_of_points[len(sets_of_points)-1]["enabled"] = True
+                sets_of_points[len(sets_of_points)-1]["points"] = np.array(sets_of_points[len(sets_of_points)-1]["points"])
+                x,y,w,h = cv2.boundingRect(sets_of_points[len(sets_of_points)-1]["points"])
+                sets_of_points[len(sets_of_points)-1].update({"size_and_location": [x,y,w,h]})
 
         else: # if we are not drawing then check if we're trying to disable a contour by checking if we clicked one
+            clicked_a_contour = False
             for contour in sets_of_points:
-                result = cv2.pointPolygonTest(np.array(contour["points"]), (x,y), False) 
+                result = cv2.pointPolygonTest(contour["points"], (x,y), False) 
                 if result>=0: # click is on the line of the contour or inside it
                     contour["enabled"] = not contour["enabled"]
+                    clicked_a_contour = True
 
                     # if we just disabled a contour we'll reset the colors in the colors gui since it appears we're about to move onto another color
                     if not contour["enabled"]:
                         hsvs = []
 
+            if not clicked_a_contour:
+                if not reordering:
+                    print("Reordering of contours initiated")
+                    # else if we didn't right click any contour then we're attempting to recorder contours
+                    reordering = True
+                    new_contours_order = []
+                else:
+                    print("Reordering of contours finished")
+                    reordering = False
+                    # start reordering contours IFFFF we selected any at all
+                    if len(new_contours_order) == len(sets_of_points):
+                        sets_of_points = new_contours_order.copy()
+                        new_contours_order = []
+                        with open(filename, "wb") as f:
+                            pickle.dump(sets_of_points, f)
+                            reinit_color_occurencies()
+                    else:
+                        print("You have not yet selected every contour")
+
         with open(filename, "wb") as f:
             pickle.dump(sets_of_points, f)
+            reinit_color_occurencies()
 
     elif event==cv2.EVENT_MOUSEMOVE:
         if drawing==True:
@@ -342,141 +401,181 @@ def drawPoints(frame):
                 end_of_line = sets_of_points[j]["points"][i+1]
 
             color_to_use = (0, 0, 0) if sets_of_points[j]["enabled"] else (0, 0, 255)
+            color_to_use = (0, 255, 0) if sets_of_points[j] in new_contours_order else color_to_use
             frame = cv2.line(frame, sets_of_points[j]["points"][i], end_of_line, color=color_to_use, thickness=3)
     return frame
 
+ready_contours = []
+def treat_contour(contour, i):
+    global color_occurencies_in_contours, ready_contours
+
+    # create a mask of the contour to blackout any colors surounding it
+    mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
+    cv2.fillPoly(mask, pts =[contour["points"]], color=(255,255,255))
+    res = cv2.bitwise_and(frame, frame, mask = mask)
+
+    # crop the image down to the contour only to prevent too much calculation and less black in the image
+    x,y,w,h = contour["size_and_location"]
+    ROI = res[y:y+h, x:x+w]
+
+    # Display the resulting frame
+    #a = np.ones((50, 50, 3), dtype=np.uint8)
+    max_colors = 4
+    start = time.time()
+    cds = get_dominant_color(ROI, k=max_colors, image_processing_size=(25, 25)) # (25, 25) worked
+    #print("done within", (time.time()-start), "seconds")
+
+    #colorsss = np.zeros((200, 50*max_colors, 3), dtype=np.uint8)
+    color_occurencies = [0, 0, 0, 0, 0, 0] # all six colors
+    max_colors_used = 2
+    for j in range(0, max_colors_used):
+        rgb = tuple(cds[j])
+
+        predicted_color = get_colour_name(rgb)
+        if predicted_color=="black":
+            max_colors_used += 1
+            if max_colors_used > max_colors:
+                max_colors_used = max_colors
+            continue
+
+        hsv = convert_rgb_to_hsv(rgb)
+        if contour["enabled"]: # only show colors of enabled contours inside the colors gui
+            hsvs.append(hsv)
+
+        # Dominant colors display, ranked left to right
+        for data in colors:
+            for each_range in data["ranges"]:
+                if hsv[0] >= each_range["min"][0] and hsv[1] >= each_range["min"][1] and hsv[2] >= each_range["min"][2] \
+                    and hsv[0] <= each_range["max"][0] and hsv[1] <= each_range["max"][1] and hsv[2] <= each_range["max"][2]:
+                    if data["name"] == "yellow":
+                        color_occurencies[0] += 1
+                    elif data["name"] == "blue":
+                        color_occurencies[1] += 1
+                    elif data["name"] == "green":
+                        color_occurencies[2] += 1
+                    elif data["name"] == "orange":
+                        color_occurencies[3] += 1
+                    elif data["name"] == "red":
+                        color_occurencies[4] += 1
+                    elif data["name"] == "white":
+                        color_occurencies[5] += 1
+                
+        #colorsss = cv2.rectangle(colorsss, (i*50, 0), ((i+1)*50, 200), tuple(cds[i]), -1)
+
+    # write the name of the most occurent color in this contour
+    most_occurences = max(color_occurencies)
+    if most_occurences>0: # if one of the colors showed up at least
+        most_occurent_color = color_occurencies.index(most_occurences)
+
+        # add this occurency to the array now
+        color_occurencies_in_contours[i][most_occurent_color] += 1
+
+
+    ready_contours.append(i)
+
+
+
+how_many_captures_should_we_take_to_average = 1
+frame = None
 def treat_footage():
-    global vid, hsvs, exit, thread_running
-    
-    # Capture the video frame
-    # by frame
-    #ret, frame = vid.read()
-    frame = cv2.imread("yes.png")
+    global vid, hsvs, exit, frame, ready_contours
+    called = False
+    recordings = 0
+    texts_to_draw = []
+    start_time = time.time()
+    ready_contours = []
+    while True:
+        
+        # Capture the video frame
+        # by frame
+        #ret, frame = vid.read()
+        frame = cv2.imread("yes.png")
 
-    # just write the time in top left corner to see if we didn't freeze
-    draw_text(frame, str(int(time.time())), font_scale=2, pos=(15, 15), text_color_bg=(0, 0, 0))
+        # if color occurencies array wasn't updated yet then update it
+        if len(color_occurencies_in_contours) < len(sets_of_points):
+            reinit_color_occurencies()
 
-    for i in range(0, len(sets_of_points)):
+        if not called:
+            called = True
+            for i in range(0, len(sets_of_points)):
+                
+                # ignore any currently being made contour
+                if i == len(sets_of_points) - 1:
+                    if drawing:
+                        continue # skip the rest because it's not a complete contour
 
-        # ignore any currently being made contour
-        if i == len(sets_of_points) - 1:
-            if drawing:
-                continue # skip the rest because it's not a complete contour
+                Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
+                #treat_contour(sets_of_points[i], i)
 
-        mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
-        cv2.fillPoly(mask, pts =[np.array(sets_of_points[i]["points"])], color=(255,255,255))
-        res = cv2.bitwise_and(frame,frame,mask = mask)
+        # if all contours have been checked then update the recordings
+        if len(ready_contours)==len(sets_of_points):
+            ready_contours = []
+            recordings += 1
+            called = False
+            
+        # once we've made the amount of repetitions we want we'll display shit
+        if recordings >= how_many_captures_should_we_take_to_average:
+            recordings = 0
+            texts_to_draw = []
+            temp_color_occurencies_in_contours = color_occurencies_in_contours.copy() # to avoid the next iteration modifying it
+            for i in range(0, len(temp_color_occurencies_in_contours)):
+                most_occurent_color_text = None
+                most_occurent_color_val = max(temp_color_occurencies_in_contours[i])
+                if most_occurent_color_val>0:
+                    most_occurent_color_index = temp_color_occurencies_in_contours[i].index(most_occurent_color_val)
+                    if most_occurent_color_index==0:
+                        most_occurent_color_text = "Yellow"
+                    elif most_occurent_color_index==1:
+                        most_occurent_color_text = "Blue"
+                    elif most_occurent_color_index==2:
+                        most_occurent_color_text = "Green"
+                    elif most_occurent_color_index==3:
+                        most_occurent_color_text = "Orange"
+                    elif most_occurent_color_index==4:
+                        most_occurent_color_text = "Red"
+                    elif most_occurent_color_index==5:
+                        most_occurent_color_text = "White"
 
-        x,y,w,h = cv2.boundingRect(np.array(sets_of_points[i]["points"]))
-        ROI = res[y:y+h, x:x+w]
+                    x,y,w,h = sets_of_points[i]["size_and_location"]
+                    texts_to_draw.append({
+                        "text": str(i+1) + " " + most_occurent_color_text,
+                        "pos": (x+w/2, y+h/2)
+                    })
 
-        # Display the resulting frame
-        #a = np.ones((50, 50, 3), dtype=np.uint8)
-        max_colors = 4
-        cds = get_dominant_color(ROI, k=max_colors, image_processing_size=(25, 25)) #colors_dominancy_sorted
+            # display how much time it took
+            now = time.time()
+            print("recognition of", how_many_captures_should_we_take_to_average, "iteration" + ("s" if how_many_captures_should_we_take_to_average>1 else ""), "took", (now - start_time), "seconds")
+            start_time = now
 
-        #colorsss = np.zeros((200, 50*max_colors, 3), dtype=np.uint8)
-        color_occurencies = [0, 0, 0, 0, 0, 0] # all six colors
-        max_colors_used = 2
-        still_didnt_get_a_color = True
-        for j in range(0, max_colors_used):
-            rgb = tuple(cds[j])
+            #cv2.imshow('colors', colorsss)
 
-            predicted_color = get_colour_name(rgb)
-            if predicted_color=="black":
-                max_colors_used += 1
-                if max_colors_used > max_colors:
-                    max_colors_used = max_colors
-                continue
+        frame = drawPoints(frame)
+        
+        # just write the time in top left corner to see if we didn't freeze
+        draw_text(frame, str(int(time.time())), font_scale=2, pos=(15, 15), text_color_bg=(0, 0, 0))
 
-            hsv = convert_rgb_to_hsv(rgb)
-            if sets_of_points[i]["enabled"]: # only show colors of enabled contours inside the colors gui
-                hsvs.append(hsv)
+        # color segmentation texts for each contour along with their order number
+        for text in texts_to_draw:
+            draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
 
-            # Dominant colors display, ranked left to right
-            for data in colors:
-                for each_range in data["ranges"]:
-                    if hsv[0] >= each_range["min"][0] and hsv[1] >= each_range["min"][1] and hsv[2] >= each_range["min"][2] \
-                        and hsv[0] <= each_range["max"][0] and hsv[1] <= each_range["max"][1] and hsv[2] <= each_range["max"][2]:
-                        if data["name"] == "yellow":
-                            color_occurencies[0] += 1
-                        elif data["name"] == "blue":
-                            color_occurencies[1] += 1
-                        elif data["name"] == "green":
-                            color_occurencies[2] += 1
-                        elif data["name"] == "orange":
-                            color_occurencies[3] += 1
-                        elif data["name"] == "red":
-                            color_occurencies[4] += 1
-                        elif data["name"] == "white":
-                            color_occurencies[5] += 1
-                    
-            #colorsss = cv2.rectangle(colorsss, (i*50, 0), ((i+1)*50, 200), tuple(cds[i]), -1)
-            '''
-            predicted_color = get_colour_name(tuple(cds[i]))
+        cv2.imshow('frame', frame)
+        cv2.setMouseCallback('frame', line_drawing)
 
-            if predicted_color[1] != "black":
-                print((i+1), predicted_color[1])
-            if predicted_color[1] in yellow_references:
-                color_occurencies[0] += 1
-            elif predicted_color[1] in blue_references:
-                color_occurencies[1] += 1
-            elif predicted_color[1] in green_references:
-                color_occurencies[2] += 1
-            elif predicted_color[1] in orange_references:
-                color_occurencies[3] += 1
-            elif predicted_color[1] in red_references:
-                color_occurencies[4] += 1
-            elif predicted_color[1] in white_references:
-                color_occurencies[5] += 1
-            '''
-
-        # write the name of the most occurent color in this contour
-        most_occurences = max(color_occurencies)
-        if most_occurences>0: # if one of the colors showed up at least 
-            most_occurent_color = color_occurencies.index(most_occurences)
-            most_occurent_color_text = None
-            if most_occurent_color==0:
-                most_occurent_color_text = "Yellow"
-            elif most_occurent_color==1:
-                most_occurent_color_text = "Blue"
-            elif most_occurent_color==2:
-                most_occurent_color_text = "Green"
-            elif most_occurent_color==3:
-                most_occurent_color_text = "Orange"
-            elif most_occurent_color==4:
-                most_occurent_color_text = "Red"
-            elif most_occurent_color==5:
-                most_occurent_color_text = "White"
-
-            draw_text(frame, most_occurent_color_text, font_scale=1, pos=(x+w/2, y+h/2), text_color_bg=(0, 0, 0))
-
-        '''
-        cv2.imshow('colors', colorsss)
-        '''
-
-    frame = drawPoints(frame)
-    cv2.imshow('frame', frame)
-    cv2.setMouseCallback('frame', line_drawing)
-
-    # if we pressed exit stop
-    if cv2.waitKey(1) & 0xFF == ord('q') or exit:
-        exit = True
-        thread_running = False
-        return
-
-    treat_footage()
+        # if we pressed exit stop
+        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
+            exit = True
+            return
 
 vid = None
-thread_running = True
 exit = False
 def main():
     global vid, exit
     # define a video capture object
     #vid = cv2.VideoCapture(0)
 
-    thread = Thread(target = treat_footage)
-    thread.start()
+    #thread = Thread(target = treat_footage)
+    #thread.start()
+    treat_footage()
 
     while True:
         treat_color_range_selector_gui()
