@@ -139,49 +139,55 @@ def draw_text(img, text, font=cv2.FONT_HERSHEY_PLAIN, pos=(0, 0), font_scale=3, 
     return text_size
 
 def treat_color_range_selector_gui():
-    global contours, hsvs
-    window = np.zeros((height*6*3, width, 3), dtype=np.uint8)
-    contours = [[], [], []]
-    for scheme in range(0, 3):
-        color_index = -1
+    global contours, hsvs, exit
+    while True:
+        window = np.zeros((height*6*3, width, 3), dtype=np.uint8)
+        contours = [[], [], []]
+        for scheme in range(0, 3):
+            color_index = -1
 
-        # draw the actual detected colors here for reference
-        for hsv in hsvs:
-            x = int( (width - bar_width) * hsv[0] / 180 )
-            window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), (255, 255, 255), -1)
-            x = int( (width - bar_width) * hsv[1] / 255 )
-            window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), (255, 255, 255), -1)
-            x = int( (width - bar_width) * hsv[2] / 255 )
-            window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), (255, 255, 255), -1)
-            #hsvs.remove(hsv)
+            # draw the actual detected colors here for reference
+            for hsv in hsvs:
+                x = int( (width - bar_width) * hsv[0] / 180 )
+                window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), (255, 255, 255), -1)
+                x = int( (width - bar_width) * hsv[1] / 255 )
+                window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), (255, 255, 255), -1)
+                x = int( (width - bar_width) * hsv[2] / 255 )
+                window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), (255, 255, 255), -1)
+                #hsvs.remove(hsv)
 
-        for data in colors:
-            color_index += 1
-            for i in range(0, len(data["ranges"])):
-                x = int( (width - bar_width) * data["ranges"][i]["min"][scheme] / scheme_maxes[scheme] )
+            for data in colors:
+                color_index += 1
+                for i in range(0, len(data["ranges"])):
+                    x = int( (width - bar_width) * data["ranges"][i]["min"][scheme] / scheme_maxes[scheme] )
 
-                box_h = color_index*height + scheme*height*6
-                min_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
+                    box_h = color_index*height + scheme*height*6
+                    min_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
 
-                window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
-                text_size = draw_text(window, "m", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
-                draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
-                
-                x = int( (width - bar_width) * data["ranges"][i]["max"][scheme] / scheme_maxes[scheme] )
+                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
+                    text_size = draw_text(window, "m", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
+                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
+                    
+                    x = int( (width - bar_width) * data["ranges"][i]["max"][scheme] / scheme_maxes[scheme] )
 
-                max_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
+                    max_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
 
-                if len(contours[scheme]) < color_index+1:
-                    contours[scheme].append({"ranges": [] })
+                    if len(contours[scheme]) < color_index+1:
+                        contours[scheme].append({"ranges": [] })
 
-                contours[scheme][color_index]["ranges"].append({"min": min_contour, "max": max_contour})
+                    contours[scheme][color_index]["ranges"].append({"min": min_contour, "max": max_contour})
 
-                window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
-                text_size = draw_text(window, "M", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
-                draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
+                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
+                    text_size = draw_text(window, "M", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
+                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
+            
+        cv2.imshow("H Selection bar", window)
+        cv2.setMouseCallback("H Selection bar", bar_movement)
         
-    cv2.imshow("H Selection bar", window)
-    cv2.setMouseCallback("H Selection bar", bar_movement)
+        # if we pressed exit stop
+        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
+            exit = True
+            return
 
 
 
@@ -573,16 +579,8 @@ def main():
     # define a video capture object
     #vid = cv2.VideoCapture(0)
 
-    #thread = Thread(target = treat_footage)
-    #thread.start()
+    #Thread(target = treat_color_range_selector_gui).start()
     treat_footage()
-
-    while True:
-        treat_color_range_selector_gui()
-        
-        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
-            exit = True
-            break
     
     # After the loop release the cap object
     #vid.release()
