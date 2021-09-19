@@ -259,7 +259,13 @@ def line_drawing(event, x, y, flags, param):
             for contour in sets_of_points:
                 result = cv2.pointPolygonTest(contour["points"], (x,y), False) 
                 if result>=0: # click is on the line of the contour or inside it
-                    if not contour in new_contours_order:
+                    
+                    its_in_new_contours_order = False
+                    for z in range(0, len(new_contours_order)):
+                        if str(new_contours_order[z]) == str(contour):
+                            its_in_new_contours_order = True
+                            break
+                    if not its_in_new_contours_order:
                         new_contours_order.append(contour)
             return
 
@@ -280,7 +286,10 @@ def line_drawing(event, x, y, flags, param):
             for contour in sets_of_points:
                 result = cv2.pointPolygonTest(contour["points"], (x,y), False) 
                 if result>=0: # click is on the line of the contour or inside it
-                    sets_of_points.remove(contour)
+                    for z in range(0, len(sets_of_points)):
+                        if str(sets_of_points[z]) == str(contour):
+                            sets_of_points.pop(z)
+                            break
 
         with open(filename, "wb") as f:
             pickle.dump(sets_of_points, f)
@@ -407,10 +416,23 @@ def drawPoints(frame):
                 end_of_line = sets_of_points[j]["points"][i+1]
 
             color_to_use = (0, 0, 0) if sets_of_points[j]["enabled"] else (0, 0, 255)
-            color_to_use = (0, 255, 0) if sets_of_points[j] in new_contours_order else color_to_use
+            its_in_new_contours_order = False
+            for z in range(0, len(new_contours_order)):
+                if str(new_contours_order[z]) == str(sets_of_points[j]):
+                    its_in_new_contours_order = True
+                    break
+            color_to_use = (0, 255, 0) if its_in_new_contours_order else color_to_use
             frame = cv2.line(frame, sets_of_points[j]["points"][i], end_of_line, color=color_to_use, thickness=3)
     return frame
 
+cube = {
+    "F": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "B": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "L": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "R": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "U": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "D": [-1, -1, -1, -1, -1, -1, -1, -1, -1]
+}
 ready_contours = []
 def treat_contour(contour, i):
     global color_occurencies_in_contours, ready_contours
@@ -479,7 +501,38 @@ def treat_contour(contour, i):
 
     ready_contours.append(i)
 
+step = 0
+coloz = ["Yellow", "Blue", "Green", "Orange", "Red", "White"]
+def treat_predictions(predictions):
+    global step, cube
 
+    if step<0:
+        return
+
+    print("predictions", [coloz[i] for i in predictions])
+
+    if step==0:
+        print("Read first face")
+        print("Predictions", len(predictions), predictions)
+        
+        if len(predictions) == 27:
+            for i in range(0, 9):
+                cube["U"][i] = predictions[i]
+            for i in range(9, 18):
+                cube["B"][i-9] = predictions[i]
+            for i in range(18, 27):
+                cube["L"][i-18] = predictions[i]
+
+        step += 1
+    elif step==1:
+        print("Read second face")
+        step += 1
+    elif step==2:
+        print("Read third face")
+        step += 1
+    elif step==3:
+        step = -1
+        print("Finished reading faces")
 
 how_many_captures_should_we_take_to_average = 1
 frame = None
@@ -488,81 +541,88 @@ def treat_footage():
     called = False
     recordings = 0
     texts_to_draw = []
+    predictions = [-1 for i in range(0, len(sets_of_points))]
+    start_time2 = time.time()
     start_time = time.time()
     ready_contours = []
     while True:
+        finished_a_reading = False
         
         # Capture the video frame
         # by frame
-        #ret, frame = vid.read()
-        frame = cv2.imread("yes.png")
+        ret, frame = vid.read()
+        #frame = cv2.imread("yes.png")
 
-        # if color occurencies array wasn't updated yet then update it
-        if len(color_occurencies_in_contours) < len(sets_of_points):
-            reinit_color_occurencies()
+        if time.time() - start_time2 > 12:
 
-        if not called:
-            called = True
-            for i in range(0, len(sets_of_points)):
+            # if color occurencies array wasn't updated yet then update it
+            if len(color_occurencies_in_contours) < len(sets_of_points):
+                reinit_color_occurencies()
+
+            if not called:
+                called = True
+                for i in range(0, len(sets_of_points)):
+                    
+                    # ignore any currently being made contour
+                    if i == len(sets_of_points) - 1:
+                        if drawing:
+                            continue # skip the rest because it's not a complete contour
+
+                    Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
+                    #treat_contour(sets_of_points[i], i)
+
+            # if all contours have been checked then update the recordings
+            if len(ready_contours)==len(sets_of_points):
+                ready_contours = []
+                recordings += 1
+                called = False
                 
-                # ignore any currently being made contour
-                if i == len(sets_of_points) - 1:
-                    if drawing:
-                        continue # skip the rest because it's not a complete contour
+            # once we've made the amount of repetitions we want we'll display shit
+            if recordings >= how_many_captures_should_we_take_to_average:
+                finished_a_reading = True
+                recordings = 0
+                texts_to_draw = []
+                temp_color_occurencies_in_contours = color_occurencies_in_contours.copy() # to avoid the next iteration modifying it
+                for i in range(0, len(temp_color_occurencies_in_contours)):
+                    most_occurent_color_text = None
+                    most_occurent_color_val = max(temp_color_occurencies_in_contours[i])
+                    if most_occurent_color_val>0:
+                        most_occurent_color_index = temp_color_occurencies_in_contours[i].index(most_occurent_color_val)
+                        if most_occurent_color_index==0:
+                            most_occurent_color_text = "Yellow"
+                        elif most_occurent_color_index==1:
+                            most_occurent_color_text = "Blue"
+                        elif most_occurent_color_index==2:
+                            most_occurent_color_text = "Green"
+                        elif most_occurent_color_index==3:
+                            most_occurent_color_text = "Orange"
+                        elif most_occurent_color_index==4:
+                            most_occurent_color_text = "Red"
+                        elif most_occurent_color_index==5:
+                            most_occurent_color_text = "White"
 
-                Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
-                #treat_contour(sets_of_points[i], i)
+                        x,y,w,h = sets_of_points[i]["size_and_location"]
+                        texts_to_draw.append({
+                            "text": str(i+1) + " " + most_occurent_color_text,
+                            "pos": (x+w/2, y+h/2)
+                        })
+                    predictions[i] = most_occurent_color_index if most_occurent_color_val>0 else -1
 
-        # if all contours have been checked then update the recordings
-        if len(ready_contours)==len(sets_of_points):
-            ready_contours = []
-            recordings += 1
-            called = False
+                # display how much time it took
+                now = time.time()
+                #print("recognition of", how_many_captures_should_we_take_to_average, "iteration" + ("s" if how_many_captures_should_we_take_to_average>1 else ""), "took", (now - start_time), "seconds")
+                start_time = now
+
+                #cv2.imshow('colors', colorsss)
+
+            frame = drawPoints(frame)
             
-        # once we've made the amount of repetitions we want we'll display shit
-        if recordings >= how_many_captures_should_we_take_to_average:
-            recordings = 0
-            texts_to_draw = []
-            temp_color_occurencies_in_contours = color_occurencies_in_contours.copy() # to avoid the next iteration modifying it
-            for i in range(0, len(temp_color_occurencies_in_contours)):
-                most_occurent_color_text = None
-                most_occurent_color_val = max(temp_color_occurencies_in_contours[i])
-                if most_occurent_color_val>0:
-                    most_occurent_color_index = temp_color_occurencies_in_contours[i].index(most_occurent_color_val)
-                    if most_occurent_color_index==0:
-                        most_occurent_color_text = "Yellow"
-                    elif most_occurent_color_index==1:
-                        most_occurent_color_text = "Blue"
-                    elif most_occurent_color_index==2:
-                        most_occurent_color_text = "Green"
-                    elif most_occurent_color_index==3:
-                        most_occurent_color_text = "Orange"
-                    elif most_occurent_color_index==4:
-                        most_occurent_color_text = "Red"
-                    elif most_occurent_color_index==5:
-                        most_occurent_color_text = "White"
+            # just write the time in top left corner to see if we didn't freeze
+            draw_text(frame, str(int(time.time())), font_scale=2, pos=(15, 15), text_color_bg=(0, 0, 0))
 
-                    x,y,w,h = sets_of_points[i]["size_and_location"]
-                    texts_to_draw.append({
-                        "text": str(i+1) + " " + most_occurent_color_text,
-                        "pos": (x+w/2, y+h/2)
-                    })
-
-            # display how much time it took
-            now = time.time()
-            print("recognition of", how_many_captures_should_we_take_to_average, "iteration" + ("s" if how_many_captures_should_we_take_to_average>1 else ""), "took", (now - start_time), "seconds")
-            start_time = now
-
-            #cv2.imshow('colors', colorsss)
-
-        frame = drawPoints(frame)
-        
-        # just write the time in top left corner to see if we didn't freeze
-        draw_text(frame, str(int(time.time())), font_scale=2, pos=(15, 15), text_color_bg=(0, 0, 0))
-
-        # color segmentation texts for each contour along with their order number
-        for text in texts_to_draw:
-            draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
+            # color segmentation texts for each contour along with their order number
+            for text in texts_to_draw:
+                draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
 
         cv2.imshow('frame', frame)
         cv2.setMouseCallback('frame', line_drawing)
@@ -572,14 +632,19 @@ def treat_footage():
             exit = True
             return
 
+            
+        # do whatever we want with our predictions stored inside
+        if finished_a_reading:
+            treat_predictions(predictions)
+
 vid = None
 exit = False
 def main():
     global vid, exit
     # define a video capture object
-    #vid = cv2.VideoCapture(0)
+    vid = cv2.VideoCapture(0)
 
-    #Thread(target = treat_color_range_selector_gui).start()
+    Thread(target = treat_color_range_selector_gui).start()
     treat_footage()
     
     # After the loop release the cap object
