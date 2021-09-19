@@ -537,7 +537,7 @@ def treat_predictions(predictions):
 how_many_captures_should_we_take_to_average = 1
 frame = None
 def treat_footage():
-    global vid, hsvs, exit, frame, ready_contours
+    global vid, vid2, hsvs, exit, frame, ready_contours
     called = False
     recordings = 0
     texts_to_draw = []
@@ -551,6 +551,7 @@ def treat_footage():
         # Capture the video frame
         # by frame
         ret, frame = vid.read()
+        ret, frame2 = vid2.read()
         #frame = cv2.imread("yes.png")
 
         if time.time() - start_time2 > 12:
@@ -625,6 +626,7 @@ def treat_footage():
                 draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
 
         cv2.imshow('frame', frame)
+        cv2.imshow('frame2', frame2)
         cv2.setMouseCallback('frame', line_drawing)
 
         # if we pressed exit stop
@@ -638,11 +640,13 @@ def treat_footage():
             treat_predictions(predictions)
 
 vid = None
+vid2 = None
 exit = False
 def main():
-    global vid, exit
+    global vid, exit, vid2
     # define a video capture object
     vid = cv2.VideoCapture(0)
+    vid2 = cv2.VideoCapture(1)
 
     Thread(target = treat_color_range_selector_gui).start()
     treat_footage()
