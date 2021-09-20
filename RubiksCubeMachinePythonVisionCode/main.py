@@ -11,6 +11,7 @@ from sklearn.cluster import KMeans
 from collections import Counter
 from threading import Thread
 
+
 drawing = False # true if mouse is pressed
 sets_of_points = []
 flying_point = None
