@@ -57,7 +57,7 @@ Servo left_sleeve,left_wrist, up_sleeve,up_wrist, down_sleeve,down_wrist, back_s
 // DEFINTIONS: Predefined angles
 // LEFT MECHANISM
 int left_cw_start = 5, left_cw_end = 124, left_acw_start = 106, left_acw_end = 0;
-int left_sleeve_back = 180, left_sleeve_forth = 46;
+int left_sleeve_back = 163, left_sleeve_forth = 46;
 int left_sleeve_val = left_sleeve_back, left_wrist_val = left_cw_start;
 
 // up MECHANISM
@@ -73,7 +73,7 @@ int down_sleeve_val = down_sleeve_back, down_wrist_val = down_cw_start;
 // BACK MECHANISM
 int up_assist_angle = 158, up_sleeve_assist_angle = 1;
 int back_cw_start = 20, back_cw_end = 138, back_acw_start = 127, back_acw_end = 5;
-int back_sleeve_back = 167, back_sleeve_forth = 0;
+int back_sleeve_back = 151, back_sleeve_forth = 0;
 int back_sleeve_val = back_sleeve_back, back_wrist_val = back_cw_start;
 
 // RIGHT MECHANISM
@@ -81,6 +81,10 @@ int right_cw_start = 9, right_cw_end = 129, right_acw_start = 108, right_acw_end
 int right_sleeve_back = 180, right_sleeve_forth = 0;
 int right_sleeve_val = right_sleeve_back, right_wrist_val = right_cw_start;
 
+char string[] = "RLDlUBRDrBu";
+String messago = "";
+int moves_index = 0;
+String runMode="serial"; //Modes available: stringiteration          clockwiseanticlockwiselooptest
     
 void setup() {
 
@@ -100,15 +104,13 @@ void setup() {
   right_wrist.attach(right_wrist_pin);
 
   resetMotorPositions();
+
+  Serial.print("runMode=" + runMode);
 }
 
-const char string[] = "RLDlUBRDrBu";
-int moves_index = 0;
-String runMode="stringiteration"; //Modes available: stringiteration          clockwiseanticlockwiselooptest
 void loop() {    
-  readSerial();
-
   if(debugging){
+    readSerial();
     
     // Step 1: read potentiometer values
     next_poten1 = analogRead(potentiometer1); next_poten2 = analogRead(potentiometer2); next_poten3 = analogRead(potentiometer3);
@@ -140,9 +142,61 @@ void loop() {
 
     }
   } else {
+      if(runMode=="serial"){
+        if(messago=="")
+          readMovesFromSerial();
+        else {
+          char c = messago[moves_index];
+          switch(c){
+            case 'L':
+              L(true);
+              break;
+            case 'l':
+              L(false);
+              break;
+            case 'R':
+              R(true);
+              break;
+            case 'r':
+              R(false);
+              break;
+            case 'U':
+              U(true);
+              break;
+            case 'u':
+              U(false);
+              break;
+            case 'D':
+              D(true);
+              break;
+            case 'd':
+              D(false);
+              break;
+            case 'B':
+              B(true);
+              break;
+            case 'b':
+              B(false);
+              break;
+            default:
+              Serial.println("Unknown move in string: " + String(c));
+              Serial.println("Fail");
+              break;
+          }
+          
+          // increment index
+          moves_index += 1;
+          // if we reachd the end of the string loop back to the starat
+          if(moves_index>=strlen(string)){
+            messago = "";
+            moves_index = 0;
+            Serial.println("Ok");
+          }
+        }
+    }     
     if(enabled){
-
       if(runMode=="stringiteration"){
+        readSerial();
 
         // reset all motors before starting sequence
         if(moves_index==0)
@@ -191,6 +245,7 @@ void loop() {
         if(moves_index>=strlen(string))
           moves_index = 0;
       } else if(runMode=="clockwiseanticlockwiselooptest"){
+        readSerial();
         // predefined set of moves
         // these values are just clockwise/anti-clockwise loops to test each face
         switch(mode){
@@ -231,6 +286,42 @@ void loop() {
 
   }
 
+}
+
+
+void readMovesFromSerial(){
+  if(Serial.available()>0){
+    String message = Serial.readStringUntil('\n');
+    if(message=='1'){
+        Serial.println("DEBUG MODE: Exited debug mode");
+        resetMotorPositions();
+        debugging = false;
+    } else if(message=='0'){
+        Serial.println("DEBUG MODE: Entered debug mode");
+        resetMotorPositions();
+        debugging = true;
+    } else if(message=='e'){
+        Serial.println("Motors enabled");
+        resetMotorPositions();
+        enabled = true;
+    } else if(message=='s'){
+        Serial.println("Motors disabled");
+        resetMotorPositions();
+        enabled = false;
+    } else if(message=='p'){
+        Serial.println("runMode=stringiteration");
+        runMode="stringiteration";
+    } else if(message=='o'){
+        Serial.println("runMode=clockwiseanticlockwiselooptest");
+        runMode="clockwiseanticlockwiselooptest";
+    } else {
+      if(messago!=""){
+        Serial.println("Fail");
+      } else {
+        messago = message;
+      }
+    }
+  }
 }
 
 void readSerial(){
@@ -283,10 +374,17 @@ void readSerial(){
       case 'p':
         Serial.println("runMode=stringiteration");
         runMode="stringiteration";
+        moves_index = 0;
         break;
       case 'o':
         Serial.println("runMode=clockwiseanticlockwiselooptest");
         runMode="clockwiseanticlockwiselooptest";
+        moves_index = 0;
+        break;
+      case 'g':
+        Serial.println("runMode=serial");
+        runMode="serial";
+        moves_index = 0;
         break;
       case '\n':
         // just a new line indicator, comes at the end of every message
