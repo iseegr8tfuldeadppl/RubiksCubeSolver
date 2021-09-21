@@ -497,7 +497,8 @@ def treat_contour(contour, i):
         most_occurent_color = color_occurencies.index(most_occurences)
 
         # add this occurency to the array now
-        color_occurencies_in_contours[i][most_occurent_color] += 1
+        if len(color_occurencies_in_contours) > i:
+            color_occurencies_in_contours[i][most_occurent_color] += 1
 
 
     ready_contours.append(i)
@@ -535,10 +536,14 @@ def treat_predictions(predictions):
         step = -1
         print("Finished reading faces")
 
-how_many_captures_should_we_take_to_average = 1
+frame2 = None
 frame = None
+how_many_captures_should_we_take_to_average = 1
 def treat_footage():
-    global vid, vid2, hsvs, exit, frame, ready_contours
+    global vid, hsvs, exit, ready_contours, frame
+    vid = cv2.VideoCapture(1)
+    #vid.set(cv2.CAP_PROP_FRAME_WIDTH,300)
+    #vid.set(cv2.CAP_PROP_FRAME_HEIGHT,300)
     called = False
     recordings = 0
     texts_to_draw = []
@@ -552,7 +557,6 @@ def treat_footage():
         # Capture the video frame
         # by frame
         ret, frame = vid.read()
-        ret, frame2 = vid2.read()
         #frame = cv2.imread("yes.png")
 
         if time.time() - start_time2 > 12:
@@ -627,7 +631,6 @@ def treat_footage():
                 draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
 
         cv2.imshow('frame', frame)
-        cv2.imshow('frame2', frame2)
         cv2.setMouseCallback('frame', line_drawing)
 
         # if we pressed exit stop
@@ -640,17 +643,32 @@ def treat_footage():
         if finished_a_reading:
             treat_predictions(predictions)
 
-vid = None
-vid2 = None
+def treat_footage2():
+    global exit, frame2
+    vid2 = cv2.VideoCapture(2)
+    #vid2.set(cv2.CAP_PROP_FRAME_WIDTH,300)
+    #vid2.set(cv2.CAP_PROP_FRAME_HEIGHT,300)
+    while True:
+        ret, frame2 = vid2.read()
+        cv2.imshow('frame2', frame2)
+
+        # if we pressed exit stop
+        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
+            exit = True
+            return
+
 exit = False
 def main():
-    global vid, exit, vid2
+    global exit
     # define a video capture object
-    vid = cv2.VideoCapture(0)
-    vid2 = cv2.VideoCapture(1)
 
-    Thread(target = treat_color_range_selector_gui).start()
-    treat_footage()
+    Thread(target = treat_footage).start()
+    Thread(target = treat_footage2).start()
+    #Thread(target = treat_color_range_selector_gui).start()
+
+    while True:
+        pass
+    #treat_footage()
     
     # After the loop release the cap object
     #vid.release()
