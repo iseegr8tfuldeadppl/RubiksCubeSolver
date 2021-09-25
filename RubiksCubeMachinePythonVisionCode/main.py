@@ -1,53 +1,22 @@
 # import the opencv library
-# pip install --user webcolors
-
 import cv2
 import pickle
 import numpy as np
 import time
-import colorsys
 import webcolors
 from sklearn.cluster import KMeans
 from collections import Counter
 from threading import Thread
+from serial_communicator import send_command
+from color_tools import *
+from important_constants import *
+from general_tools import draw_text
+import keyboard
 
 
 drawing = False # true if mouse is pressed
 sets_of_points = []
 flying_point = None
-filename = "contours.pickle"
-hsvs = []
-'''
-print("How to use:")
-print("")
-print("")
-print("Left Click to start creating a contour\ndraw the points where ever you want")
-print("  and then to close the contour Right Click and the code will automatically start")
-print("  displaying its predicted color + its index in the contours array")
-print("")
-print("")
-print("Right click on a contour to Enable or Disable reporting of the dominant colors inside it")
-print("  that is being displayed inside the color ranges window (disignated by half height white boxes")
-print("  drawn always on the red color bar)")
-print("  (disabled contours are colored green and enabled contours are colored black)")
-print("")
-print("")
-print("Right click away from all contours to start a reordering process where you can Left Click all of the")
-print("  contours sequentially to put them in the order you want inside the contours array in order to code")
-print("  relative to the array's indexes, once you have selected all of the contours right click again away from")
-print("  any contour and the new order will be applied")
-print("  (selected contours will be colored green during selection)")
-print("")
-print("")
-print("The color range selection GUI is split vertically onto three parts, H and S and V and each line")
-print("  contains the value for each of the six colors")
-print("  each color has two knobs that you can drag left and right to adjust the limits (except for red ")
-print("  it has four knobs in order to adjust two ranges because that seems to work better")
-print("")
-print("")
-print("Everything is saved inside pickle files in the project directory")
-'''
-
 
 def reinit_color_occurencies():
     global color_occurencies_in_contours
@@ -60,15 +29,40 @@ try:
         reinit_color_occurencies()
 except:
     pass
-colors_filename = "colors.pickle"
-width = 1000
-height = 30
-bar_width = 15
-font_size = 1.0
-scheme_maxes = [180, 255, 255]
-colors = []
+
 contours = [[], [], []]
 
+reordering = False
+ready_contours = []
+new_contours_order = []
+step = 0
+frame2 = None
+frame = None
+how_many_captures_should_we_take_to_average = 1
+
+serial = None
+
+cube = {
+    "F": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "B": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "L": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "R": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "U": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
+    "D": [-1, -1, -1, -1, -1, -1, -1, -1, -1]
+}
+
+
+Exit = False
+selected_scheme = None
+previous_x = None
+selected_min_or_max = None
+selected_color_index = -1
+selected_range_index = -1
+a_bar_is_held = False
+colors = []
+
+
+colors_filename = "colors.pickle"
 
 try:
     with open(colors_filename, "rb") as f:
@@ -76,13 +70,60 @@ try:
 except:
     from colors import colors as temp
     colors = temp
+scheme_maxes = [180, 255, 255]
+hsvs = []
 
-selected_color_index = -1
-selected_range_index = -1
-selected_min_or_max = None
-previous_x = None
-a_bar_is_held = False
-selected_scheme = None
+def treat_color_range_selector_gui():
+    global contours, hsvs, Exit
+    while not Exit:
+        window = np.zeros((height*6*3, width, 3), dtype=np.uint8)
+        contours = [[], [], []]
+        for scheme in range(0, 3):
+            color_index = -1
+
+            # draw the actual detected colors here for reference
+            for hsv in hsvs:
+                x = int( (width - bar_width) * hsv[0] / 180 )
+                window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), (255, 255, 255), -1)
+                x = int( (width - bar_width) * hsv[1] / 255 )
+                window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), (255, 255, 255), -1)
+                x = int( (width - bar_width) * hsv[2] / 255 )
+                window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), (255, 255, 255), -1)
+                #hsvs.remove(hsv)
+
+            for data in colors:
+                color_index += 1
+                for i in range(0, len(data["ranges"])):
+                    x = int( (width - bar_width) * data["ranges"][i]["min"][scheme] / scheme_maxes[scheme] )
+
+                    box_h = color_index*height + scheme*height*6
+                    min_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
+
+                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
+                    text_size = draw_text(window, "m", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
+                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
+                    
+                    x = int( (width - bar_width) * data["ranges"][i]["max"][scheme] / scheme_maxes[scheme] )
+
+                    max_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
+
+                    if len(contours[scheme]) < color_index+1:
+                        contours[scheme].append({"ranges": [] })
+
+                    contours[scheme][color_index]["ranges"].append({"min": min_contour, "max": max_contour})
+
+                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
+                    text_size = draw_text(window, "M", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
+                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
+            
+        cv2.imshow("H Selection bar", window)
+        cv2.setMouseCallback("H Selection bar", bar_movement)
+        
+        # if we pressed exit stop
+        cv2.waitKey(1)
+        if keyboard.is_pressed('q') == True:
+            Exit = True
+
 def bar_movement(event, x, y, flags, param):
     global selected_color_index, selected_range_index, selected_min_or_max, previous_x, a_bar_is_held, colors, selected_scheme
 
@@ -130,85 +171,6 @@ def bar_movement(event, x, y, flags, param):
         with open(colors_filename, "wb") as f:
             pickle.dump(colors, f)
 
-def draw_text(img, text, font=cv2.FONT_HERSHEY_PLAIN, pos=(0, 0), font_scale=3, font_thickness=2, text_color=(255, 255, 255), text_color_bg=(0, 0, 0)):
-    x, y = pos
-    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-    text_w, text_h = text_size
-    cv2.rectangle(img, (int(x-text_w/2), int(y-text_h/2)), (int(x + text_w/2), int(y + text_h/2)), text_color_bg, -1)
-    cv2.putText(img, text, (int(x-text_w/2), int(y + text_h/2 + font_scale - 1)), font, font_scale, text_color, font_thickness)
-
-    return text_size
-
-def treat_color_range_selector_gui():
-    global contours, hsvs, exit
-    while True:
-        window = np.zeros((height*6*3, width, 3), dtype=np.uint8)
-        contours = [[], [], []]
-        for scheme in range(0, 3):
-            color_index = -1
-
-            # draw the actual detected colors here for reference
-            for hsv in hsvs:
-                x = int( (width - bar_width) * hsv[0] / 180 )
-                window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), (255, 255, 255), -1)
-                x = int( (width - bar_width) * hsv[1] / 255 )
-                window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), (255, 255, 255), -1)
-                x = int( (width - bar_width) * hsv[2] / 255 )
-                window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), (255, 255, 255), -1)
-                #hsvs.remove(hsv)
-
-            for data in colors:
-                color_index += 1
-                for i in range(0, len(data["ranges"])):
-                    x = int( (width - bar_width) * data["ranges"][i]["min"][scheme] / scheme_maxes[scheme] )
-
-                    box_h = color_index*height + scheme*height*6
-                    min_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
-
-                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
-                    text_size = draw_text(window, "m", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
-                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
-                    
-                    x = int( (width - bar_width) * data["ranges"][i]["max"][scheme] / scheme_maxes[scheme] )
-
-                    max_contour = np.array([(x, box_h), (x+bar_width, box_h), (x + bar_width, box_h + height), (x, box_h+height)])
-
-                    if len(contours[scheme]) < color_index+1:
-                        contours[scheme].append({"ranges": [] })
-
-                    contours[scheme][color_index]["ranges"].append({"min": min_contour, "max": max_contour})
-
-                    window = cv2.rectangle(window, (x, box_h), (x + bar_width, box_h + height), data["representation"], -1)
-                    text_size = draw_text(window, "M", font_scale=font_size, pos=(x, box_h), text_color_bg=(0, 0, 0))
-                    draw_text(window, str(i+1), font_scale=font_size, pos=(x, text_size[1] + box_h), text_color_bg=(0, 0, 0))
-            
-        cv2.imshow("H Selection bar", window)
-        cv2.setMouseCallback("H Selection bar", bar_movement)
-        
-        # if we pressed exit stop
-        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
-            exit = True
-            return
-
-
-
-def draw_text(img, text,
-          font=cv2.FONT_HERSHEY_PLAIN,
-          pos=(0, 0),
-          font_scale=3,
-          font_thickness=2,
-          text_color=(255, 255, 255),
-          text_color_bg=(0, 0, 0)
-          ):
-
-    x, y = pos
-    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-    text_w, text_h = text_size
-    cv2.rectangle(img, (int(x-text_w/2), int(y-text_h/2)), (int(x + text_w/2), int(y + text_h/2)), text_color_bg, -1)
-    cv2.putText(img, text, (int(x-text_w/2), int(y + text_h/2 + font_scale - 1)), font, font_scale, text_color, font_thickness)
-
-    return text_size
-
 def get_dominant_color(image, k=4, image_processing_size = None):
     """
     takes an image as input
@@ -244,15 +206,9 @@ def get_dominant_color(image, k=4, image_processing_size = None):
 
     return clt.cluster_centers_ 
 
-
-reordering = False
-new_contours_order = []
-
-
-
 # mouse callback function
 def line_drawing(event, x, y, flags, param):
-    global drawing, flying_point, sets_of_points, hsvs, reordering, new_contours_order
+    global drawing, flying_point, sets_of_points, hsvs, reordering, new_contours_order, called
 
     if event==cv2.EVENT_LBUTTONDOWN:
 
@@ -305,6 +261,7 @@ def line_drawing(event, x, y, flags, param):
                 sets_of_points.pop()
             else: # else accept it as a new contour
                 sets_of_points[len(sets_of_points)-1]["enabled"] = True
+                called = False
                 sets_of_points[len(sets_of_points)-1]["points"] = np.array(sets_of_points[len(sets_of_points)-1]["points"])
                 x,y,w,h = cv2.boundingRect(sets_of_points[len(sets_of_points)-1]["points"])
                 sets_of_points[len(sets_of_points)-1].update({"size_and_location": [x,y,w,h]})
@@ -348,59 +305,6 @@ def line_drawing(event, x, y, flags, param):
         if drawing==True:
             flying_point = (x, y)
 
-def closest_colour(requested_colour):
-    min_colours = {}
-    for key, name in webcolors.CSS3_HEX_TO_NAMES.items():
-        r_c, g_c, b_c = webcolors.hex_to_rgb(key)
-        rd = (r_c - requested_colour[0]) ** 2
-        gd = (g_c - requested_colour[1]) ** 2
-        bd = (b_c - requested_colour[2]) ** 2
-        min_colours[(rd + gd + bd)] = name
-    return min_colours[min(min_colours.keys())]
-
-def get_colour_name(requested_colour):
-    try:
-        closest_name = actual_name = webcolors.rgb_to_name(requested_colour)
-    except ValueError:
-        closest_name = closest_colour(requested_colour)
-        actual_name = None
-    return actual_name, closest_name
-
-
-
-def convert_hsv_to_rgb(hsv):
-    #get rgb percentage: range (0-1, 0-1, 0-1 )
-    hue_percentage= hsv[0] / float(180)
-    saturation_percentage= hsv[1]/ float(255)
-    value_percentage= hsv[2]/ float(255)
-    
-    #get hsv percentage: range (0-1, 0-1, 0-1)
-    color_rgb_percentage=colorsys.hsv_to_rgb(hue_percentage, saturation_percentage, value_percentage) 
-    
-    #get normal hsv: range (0-360, 0-255, 0-255)
-    color_r=round(255*color_rgb_percentage[0])
-    color_g=round(255*color_rgb_percentage[1])
-    color_b=round(255*color_rgb_percentage[2])
-    color_rgb=(color_r, color_g, color_b)
-    return color_rgb
-
-def convert_rgb_to_hsv(rgb):
-    #get rgb percentage: range (0-1, 0-1, 0-1 )
-    red_percentage= rgb[0] / float(255)
-    green_percentage= rgb[1]/ float(255)
-    blue_percentage= rgb[2]/ float(255)
-
-    
-    #get hsv percentage: range (0-1, 0-1, 0-1)
-    color_hsv_percentage=colorsys.rgb_to_hsv(red_percentage, green_percentage, blue_percentage) 
-    
-    #get normal hsv: range (0-360, 0-255, 0-255)
-    color_h=round(180*color_hsv_percentage[0])
-    color_s=round(255*color_hsv_percentage[1])
-    color_v=round(255*color_hsv_percentage[2])
-    color_hsv=(color_h, color_s, color_h)
-    return color_hsv
-
 def drawPoints(frame):
     for j in range(0, len(sets_of_points)):
 
@@ -426,15 +330,6 @@ def drawPoints(frame):
             frame = cv2.line(frame, sets_of_points[j]["points"][i], end_of_line, color=color_to_use, thickness=3)
     return frame
 
-cube = {
-    "F": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
-    "B": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
-    "L": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
-    "R": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
-    "U": [-1, -1, -1, -1, -1, -1, -1, -1, -1],
-    "D": [-1, -1, -1, -1, -1, -1, -1, -1, -1]
-}
-ready_contours = []
 def treat_contour(contour, i):
     global color_occurencies_in_contours, ready_contours
 
@@ -459,13 +354,6 @@ def treat_contour(contour, i):
     max_colors_used = 2
     for j in range(0, max_colors_used):
         rgb = tuple(cds[j])
-
-        predicted_color = get_colour_name(rgb)
-        if predicted_color=="black":
-            max_colors_used += 1
-            if max_colors_used > max_colors:
-                max_colors_used = max_colors
-            continue
 
         hsv = convert_rgb_to_hsv(rgb)
         if contour["enabled"]: # only show colors of enabled contours inside the colors gui
@@ -503,79 +391,129 @@ def treat_contour(contour, i):
 
     ready_contours.append(i)
 
-step = 0
-coloz = ["Yellow", "Blue", "Green", "Orange", "Red", "White"]
-def treat_predictions(predictions):
-    global step, cube
+def treat_predictions(previous_predictions, contours_to_treat, desired_contours_count=27):
+    global step, cube, serial
+
+    debugging = False
+    if debugging:
+        step = 9000
+        desired_contours_count = 27
+
+    #print("len", len(previous_predictions), desired_contours_count)
+    #print("len(previous_predictions", len(previous_predictions), "desired_contours_count", desired_contours_count)
+    #print("predictions", [coloz[i] for i in previous_predictions])
+    contours_count = 0
+    for piece in contours_to_treat:
+        if len(previous_predictions) > piece:
+            if previous_predictions[piece]!=-1:
+                contours_count += 1
+
+    full_reading = desired_contours_count == contours_count
 
     if step<0:
-        return
+        return []
 
-    print("predictions", [coloz[i] for i in predictions])
-
-    if step==0:
-        print("Read first face")
-        print("Predictions", len(predictions), predictions)
-        
-        if len(predictions) == 27:
-            for i in range(0, 9):
-                cube["U"][i] = predictions[i]
-            for i in range(9, 18):
-                cube["B"][i-9] = predictions[i]
-            for i in range(18, 27):
-                cube["L"][i-18] = predictions[i]
-
-        step += 1
+    if step==0: # this is to pass the first ever command before agknowledging the face
+        step = 1
+        print("contours_to_treat", contours_to_treat)
+        print("previous_predictions", previous_predictions)
+        #serial = send_command(serial, "MOTORS RESET")
+        contours_to_treat = [i for i in range(0, 27)]
+        return contours_to_treat
     elif step==1:
-        print("Read second face")
-        step += 1
+        if full_reading:
+            print("contours_to_treat", contours_to_treat)
+            print("previous_predictions", previous_predictions)
+            step += 1
+            print("predictions", [coloz[i] for i in previous_predictions])
+            '''
+            for i in range(0, 9):
+                cube["U"][i] = previous_predictions[i]
+            for i in range(9, 18):
+                cube["B"][i-9] = previous_predictions[i]
+            for i in range(18, 27):
+                cube["L"][i-18] = previous_predictions[i]
+            '''
+            #serial = send_command(serial, "MOVE L")
+            #serial = send_command(serial, "MOTORS RESET")
+            contours_to_treat = [16, 21, 24]
+            return contours_to_treat
     elif step==2:
-        print("Read third face")
-        step += 1
+        if full_reading:
+            print("contours_to_treat", contours_to_treat)
+            print("previous_predictions", previous_predictions)
+            '''
+            for i in range(0, 9):
+                cube["U"][i] = previous_predictions[i]
+            for i in range(9, 18):
+                cube["B"][i-9] = previous_predictions[i]
+            for i in range(18, 27):
+                cube["L"][i-18] = previous_predictions[i]
+            '''
+            #serial = send_command(serial, "MOVE lb")
+            #serial = send_command(serial, "MOTORS RESET")
+            step += 1
+            contours_to_treat = [15, 14, 25]
+            return contours_to_treat
     elif step==3:
-        step = -1
-        print("Finished reading faces")
+        if full_reading:
+            print("contours_to_treat", contours_to_treat)
+            print("previous_predictions", previous_predictions)
+            '''
+            for i in range(0, 9):
+                cube["U"][i] = previous_predictions[i]
+            for i in range(9, 18):
+                cube["B"][i-9] = previous_predictions[i]
+            for i in range(18, 27):
+                cube["L"][i-18] = previous_predictions[i]
+            '''
+            #serial = send_command(serial, "MOVE B")
+            #serial = send_command(serial, "MOTORS RESET")
+            step += 1
+            return contours_to_treat
 
-frame2 = None
-frame = None
-how_many_captures_should_we_take_to_average = 1
+    contours_to_treat = [i for i in range(0, desired_contours_count)]
+    return contours_to_treat
+
+called = False
 def treat_footage():
-    global vid, hsvs, exit, ready_contours, frame
+    global hsvs, ready_contours, frame, Exit, called
+
     vid = cv2.VideoCapture(1)
-    #vid.set(cv2.CAP_PROP_FRAME_WIDTH,300)
-    #vid.set(cv2.CAP_PROP_FRAME_HEIGHT,300)
-    called = False
     recordings = 0
     texts_to_draw = []
-    predictions = [-1 for i in range(0, len(sets_of_points))]
     start_time2 = time.time()
     start_time = time.time()
     ready_contours = []
-    while True:
-        finished_a_reading = False
-        
+    finished_a_reading = False
+    contours_to_treat = []
+    desired_contours_count = len(contours_to_treat)
+    while not Exit:
+        predictions = [-1 for i in range(0, len(sets_of_points))]
         # Capture the video frame
-        # by frame
         ret, frame = vid.read()
-        #frame = cv2.imread("yes.png")
 
-        if time.time() - start_time2 > 12:
+        if time.time() - start_time2 > start_delay:
 
             # if color occurencies array wasn't updated yet then update it
             if len(color_occurencies_in_contours) < len(sets_of_points):
                 reinit_color_occurencies()
 
             if not called:
+                ready_contours = []
                 called = True
                 for i in range(0, len(sets_of_points)):
                     
                     # ignore any currently being made contour
                     if i == len(sets_of_points) - 1:
                         if drawing:
-                            continue # skip the rest because it's not a complete contour
+                            continue # skip it because it's not a complete contour
 
-                    Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
-                    #treat_contour(sets_of_points[i], i)
+                    if i in contours_to_treat:
+                        Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
+                        #treat_contour(sets_of_points[i], i)
+                    else:
+                        ready_contours.append(i)
 
             # if all contours have been checked then update the recordings
             if len(ready_contours)==len(sets_of_points):
@@ -590,6 +528,9 @@ def treat_footage():
                 texts_to_draw = []
                 temp_color_occurencies_in_contours = color_occurencies_in_contours.copy() # to avoid the next iteration modifying it
                 for i in range(0, len(temp_color_occurencies_in_contours)):
+                    if not i in contours_to_treat:
+                        continue
+
                     most_occurent_color_text = None
                     most_occurent_color_val = max(temp_color_occurencies_in_contours[i])
                     if most_occurent_color_val>0:
@@ -633,47 +574,65 @@ def treat_footage():
         cv2.imshow('frame', frame)
         cv2.setMouseCallback('frame', line_drawing)
 
-        # if we pressed exit stop
-        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
-            exit = True
-            return
-
+        # if we pressed Exit stop
+        cv2.waitKey(1)
+        if keyboard.is_pressed('q') == True:
+            Exit = True
             
         # do whatever we want with our predictions stored inside
         if finished_a_reading:
-            treat_predictions(predictions)
+            finished_a_reading = False
+            contours_to_treat = treat_predictions(predictions, contours_to_treat, desired_contours_count=desired_contours_count)
+            desired_contours_count = len(contours_to_treat)
+            #contours_to_treat = [i for i in range(0, 27)]
 
 def treat_footage2():
-    global exit, frame2
-    vid2 = cv2.VideoCapture(2)
+    global frame2, Exit
+    vid2 = cv2.VideoCapture(0)
     #vid2.set(cv2.CAP_PROP_FRAME_WIDTH,300)
     #vid2.set(cv2.CAP_PROP_FRAME_HEIGHT,300)
-    while True:
+    while not Exit:
         ret, frame2 = vid2.read()
+
         cv2.imshow('frame2', frame2)
 
         # if we pressed exit stop
-        if cv2.waitKey(1) & 0xFF == ord('q') or exit:
-            exit = True
-            return
+        cv2.waitKey(1)
+        if keyboard.is_pressed('q') == True:
+            Exit = True
 
-exit = False
+'''
+def treat_footage():
+    global frame, Exit
+    vid = cv2.VideoCapture(1)
+    while not Exit:
+        ret, frame = vid.read()
+
+        cv2.imshow('frame', frame)
+
+        # if we pressed exit stop
+        cv2.waitKey(1)
+        if keyboard.is_pressed('q') == True:
+            Exit = True
+'''
+
 def main():
-    global exit
-    # define a video capture object
+    global serial
+    #serial = send_command(serial, "START")
 
-    Thread(target = treat_footage).start()
-    Thread(target = treat_footage2).start()
-    #Thread(target = treat_color_range_selector_gui).start()
+    treat_footage_thread = Thread(target = treat_footage)
+    treat_footage_thread.start()
 
-    while True:
-        pass
-    #treat_footage()
-    
-    # After the loop release the cap object
-    #vid.release()
-    # Destroy all the windows
-    cv2.destroyAllWindows()
+    #treat_footage2_thread = Thread(target = treat_footage2)
+    #treat_footage2_thread.start()
+
+    treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
+    #treat_color_range_selector_gui_thread.setDaemon(True)
+    treat_color_range_selector_gui_thread.start()
+
+    #while True:
+    #    if keyboard.is_pressed('q') == True:
+    #        quit()
 
 if __name__ == '__main__':
     main()
