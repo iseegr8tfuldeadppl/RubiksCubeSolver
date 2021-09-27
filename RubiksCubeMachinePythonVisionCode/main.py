@@ -436,7 +436,7 @@ def treat_predictions(previous_predictions, contours_to_treat, desired_contours_
             '''
             #serial = send_command(serial, "MOVE L")
             #serial = send_command(serial, "MOTORS RESET")
-            contours_to_treat = [16, 21, 24]
+            contours_to_treat = [11, 14, 17]
             return contours_to_treat
     elif step==2:
         if full_reading:
@@ -453,7 +453,7 @@ def treat_predictions(previous_predictions, contours_to_treat, desired_contours_
             #serial = send_command(serial, "MOVE lb")
             #serial = send_command(serial, "MOTORS RESET")
             step += 1
-            contours_to_treat = [15, 14, 25]
+            contours_to_treat = [18, 21, 24]
             return contours_to_treat
     elif step==3:
         if full_reading:
@@ -479,7 +479,7 @@ called = False
 def treat_footage():
     global hsvs, ready_contours, frame, Exit, called
 
-    vid = cv2.VideoCapture(1)
+    vid = cv2.VideoCapture(2)
     recordings = 0
     texts_to_draw = []
     start_time2 = time.time()
@@ -488,6 +488,7 @@ def treat_footage():
     finished_a_reading = False
     contours_to_treat = []
     desired_contours_count = len(contours_to_treat)
+    yes = False # debugging variable
     while not Exit:
         predictions = [-1 for i in range(0, len(sets_of_points))]
         # Capture the video frame
@@ -550,10 +551,12 @@ def treat_footage():
 
                         x,y,w,h = sets_of_points[i]["size_and_location"]
                         texts_to_draw.append({
-                            "text": str(i+1) + " " + most_occurent_color_text,
+                            "text": str(i) + " " + most_occurent_color_text,
                             "pos": (x+w/2, y+h/2)
                         })
-                    predictions[i] = most_occurent_color_index if most_occurent_color_val>0 else -1
+                        predictions[i] = most_occurent_color_index
+                    else:
+                        predictions[i] = -1
 
                 # display how much time it took
                 now = time.time()
@@ -582,15 +585,30 @@ def treat_footage():
         # do whatever we want with our predictions stored inside
         if finished_a_reading:
             finished_a_reading = False
-            contours_to_treat = treat_predictions(predictions, contours_to_treat, desired_contours_count=desired_contours_count)
+            #contours_to_treat = treat_predictions(predictions, contours_to_treat, desired_contours_count=desired_contours_count)
+
+            '''
+            yes = not yes
+            # debugging purely
+            global serial
+            if yes:
+                serial = send_command(serial, "MOVE r")
+                serial = send_command(serial, "MOTORS RESET")
+            else:
+                serial = send_command(serial, "MOVE R")
+                serial = send_command(serial, "MOTORS RESET")
+            time.sleep(1)
+            print("predictions", [coloz[i] for i in predictions])
+            contours_to_treat = [11, 14, 17]
+            contours_to_treat = [18, 21, 24]
+            '''
+
+            contours_to_treat = [i for i in range(0, 27)]
             desired_contours_count = len(contours_to_treat)
-            #contours_to_treat = [i for i in range(0, 27)]
 
 def treat_footage2():
     global frame2, Exit
     vid2 = cv2.VideoCapture(0)
-    #vid2.set(cv2.CAP_PROP_FRAME_WIDTH,300)
-    #vid2.set(cv2.CAP_PROP_FRAME_HEIGHT,300)
     while not Exit:
         ret, frame2 = vid2.read()
 
@@ -601,24 +619,10 @@ def treat_footage2():
         if keyboard.is_pressed('q') == True:
             Exit = True
 
-'''
-def treat_footage():
-    global frame, Exit
-    vid = cv2.VideoCapture(1)
-    while not Exit:
-        ret, frame = vid.read()
-
-        cv2.imshow('frame', frame)
-
-        # if we pressed exit stop
-        cv2.waitKey(1)
-        if keyboard.is_pressed('q') == True:
-            Exit = True
-'''
 
 def main():
     global serial
-    #serial = send_command(serial, "START")
+    serial = send_command(serial, "START")
 
     treat_footage_thread = Thread(target = treat_footage)
     treat_footage_thread.start()

@@ -4,9 +4,7 @@ from serial import PARITY_NONE
 from serial import STOPBITS_ONE
 
 def Setup_serial(port='COM4'):
-
-    done = False
-    while done==False:
+    while True:
         try:
             ser = Serial(
             port = port,
@@ -23,8 +21,9 @@ def Setup_serial(port='COM4'):
             if(ser.isOpen() == False):
                 ser.open()
             else:
-                done = True
                 print('Connected')
                 return ser
-        except IOError:
-          pass
+        except FileNotFoundError as e:
+            print("You're either not connected or the port", port, "is wrong")
+        except Exception as e:
+            print("Error connecting to serial with error e=", e)

@@ -6,7 +6,7 @@ colors = [
         "name": "red"
     },
     {
-        "ranges": [{"min": (79, 82, 113), "max": (99, 255, 255)}],
+        "ranges": [{"min": (79, 82, 113), "max": (99, 255, 255)}, {"min": (79, 82, 113), "max": (99, 255, 255)}],
         "representation": (255, 0, 0),
         "name": "blue"
     },
@@ -21,7 +21,7 @@ colors = [
         "name": "yellow"
     },
     {
-        "ranges": [{"min": (0, 0, 178), "max": (180, 89, 255)}],
+        "ranges": [{"min": (0, 0, 178), "max": (180, 89, 255)}, {"min": (0, 0, 178), "max": (180, 89, 255)}],
         "representation": (255, 255, 255),
         "name": "white"
     },
