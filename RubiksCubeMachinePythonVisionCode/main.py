@@ -360,22 +360,37 @@ def treat_contour(contour, i):
             hsvs.append(hsv)
 
         # Dominant colors display, ranked left to right
+            h_occurencies = 0
+            s_occurencies = 0
+            v_occurencies = 0
         for data in colors:
+            index = -1
+            h_occurencies = 0
+            s_occurencies = 0
+            v_occurencies = 0
             for each_range in data["ranges"]:
-                if hsv[0] >= each_range["min"][0] and hsv[1] >= each_range["min"][1] and hsv[2] >= each_range["min"][2] \
-                    and hsv[0] <= each_range["max"][0] and hsv[1] <= each_range["max"][1] and hsv[2] <= each_range["max"][2]:
-                    if data["name"] == "yellow":
-                        color_occurencies[0] += 1
-                    elif data["name"] == "blue":
-                        color_occurencies[1] += 1
-                    elif data["name"] == "green":
-                        color_occurencies[2] += 1
-                    elif data["name"] == "orange":
-                        color_occurencies[3] += 1
-                    elif data["name"] == "red":
-                        color_occurencies[4] += 1
-                    elif data["name"] == "white":
-                        color_occurencies[5] += 1
+                index += 1
+                if hsv[0] >= each_range["min"][0] and hsv[0] <= each_range["max"][0]:
+                    h_occurencies += 1
+                if hsv[1] >= each_range["min"][1] and hsv[1] <= each_range["max"][1]:
+                    s_occurencies += 1
+                if hsv[2] >= each_range["min"][2] and hsv[2] <= each_range["max"][2]:
+                    v_occurencies += 1
+
+            if h_occurencies>0 or s_occurencies>0 or v_occurencies>0:
+                maxer = max([h_occurencies*5, s_occurencies*1, v_occurencies*1])
+                if data["name"] == "yellow":
+                    color_occurencies[0] += maxer
+                elif data["name"] == "blue":
+                    color_occurencies[1] += maxer
+                elif data["name"] == "green":
+                    color_occurencies[2] += maxer
+                elif data["name"] == "orange":
+                    color_occurencies[3] += maxer
+                elif data["name"] == "red":
+                    color_occurencies[4] += maxer
+                elif data["name"] == "white":
+                    color_occurencies[5] += maxer
                 
         #colorsss = cv2.rectangle(colorsss, (i*50, 0), ((i+1)*50, 200), tuple(cds[i]), -1)
 
@@ -508,7 +523,6 @@ def treat_footage():
                 reinit_color_occurencies()
 
             if not called:
-                print("called", called)
                 ready_contours = []
                 called = True
                 for i in range(0, len(sets_of_points)):
@@ -525,7 +539,6 @@ def treat_footage():
                         ready_contours.append(i)
 
             # if all contours have been checked then update the recordings
-            print("recordings", recordings, "how_many_captures_should_we_take_to_average", how_many_captures_should_we_take_to_average, "len(ready_contours)", len(ready_contours), "len(sets_of_points)", len(sets_of_points))
             if len(ready_contours)==len(sets_of_points):
                 ready_contours = []
                 recordings += 1
@@ -606,7 +619,7 @@ def treat_footage():
             contours_to_treat = [11, 14, 17]
             contours_to_treat = [18, 21, 24]
 
-            #contours_to_treat = [i for i in range(0, 27)]
+            contours_to_treat = [i for i in range(0, 27)]
             desired_contours_count = len(contours_to_treat)
 
 def debug_motor_testors():
