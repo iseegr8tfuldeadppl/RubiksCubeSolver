@@ -479,6 +479,13 @@ called = False
 def treat_footage():
     global hsvs, ready_contours, frame, Exit, called
 
+    treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
+    #treat_color_range_selector_gui_thread.setDaemon(True)
+    treat_color_range_selector_gui_thread.start()
+
+    debug_motor_testors_thread = Thread(target = debug_motor_testors)
+    debug_motor_testors_thread
+
     vid = cv2.VideoCapture(2)
     recordings = 0
     texts_to_draw = []
@@ -501,6 +508,7 @@ def treat_footage():
                 reinit_color_occurencies()
 
             if not called:
+                print("called", called)
                 ready_contours = []
                 called = True
                 for i in range(0, len(sets_of_points)):
@@ -517,6 +525,7 @@ def treat_footage():
                         ready_contours.append(i)
 
             # if all contours have been checked then update the recordings
+            print("recordings", recordings, "how_many_captures_should_we_take_to_average", how_many_captures_should_we_take_to_average, "len(ready_contours)", len(ready_contours), "len(sets_of_points)", len(sets_of_points))
             if len(ready_contours)==len(sets_of_points):
                 ready_contours = []
                 recordings += 1
@@ -587,24 +596,35 @@ def treat_footage():
             finished_a_reading = False
             #contours_to_treat = treat_predictions(predictions, contours_to_treat, desired_contours_count=desired_contours_count)
 
-            '''
-            yes = not yes
-            # debugging purely
-            global serial
-            if yes:
-                serial = send_command(serial, "MOVE r")
-                serial = send_command(serial, "MOTORS RESET")
-            else:
-                serial = send_command(serial, "MOVE R")
-                serial = send_command(serial, "MOTORS RESET")
-            time.sleep(1)
-            print("predictions", [coloz[i] for i in predictions])
+            printer = ""
+            for i in predictions:
+                if i!=-1:
+                    printer += coloz[i] + " "
+            print("predictions", printer)
+            #print("predictions", [coloz[i] for i in predictions])
+            
             contours_to_treat = [11, 14, 17]
             contours_to_treat = [18, 21, 24]
-            '''
 
-            contours_to_treat = [i for i in range(0, 27)]
+            #contours_to_treat = [i for i in range(0, 27)]
             desired_contours_count = len(contours_to_treat)
+
+def debug_motor_testors():
+    # debugging purely
+    global serial, Exit
+    
+    while not Exit:
+        if keyboard.is_pressed('l') == True:
+            serial = send_command(serial, "MOVE r")
+            serial = send_command(serial, "MOTORS RESET")
+        if keyboard.is_pressed('r') == True:
+            serial = send_command(serial, "MOVE R")
+            serial = send_command(serial, "MOTORS RESET")
+        if keyboard.is_pressed('q') == True:
+            Exit = True
+    '''
+    time.sleep(1)
+    '''
 
 def treat_footage2():
     global frame2, Exit
@@ -624,19 +644,13 @@ def main():
     global serial
     serial = send_command(serial, "START")
 
-    treat_footage_thread = Thread(target = treat_footage)
-    treat_footage_thread.start()
+
+    treat_footage()
+    #treat_footage_thread = Thread(target = treat_footage)
+    #treat_footage_thread.start()
 
     #treat_footage2_thread = Thread(target = treat_footage2)
     #treat_footage2_thread.start()
-
-    treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
-    #treat_color_range_selector_gui_thread.setDaemon(True)
-    treat_color_range_selector_gui_thread.start()
-
-    #while True:
-    #    if keyboard.is_pressed('q') == True:
-    #        quit()
 
 if __name__ == '__main__':
     main()
