@@ -196,13 +196,14 @@ def get_dominant_color(image, k=4, image_processing_size = None):
 
     #cluster and assign labels to the pixels 
     clt = KMeans(n_clusters = k)
+
     labels = clt.fit_predict(image)
 
     #count labels to find most popular
     label_counts = Counter(labels)
 
     #subset out most popular centroid
-    dominant_color = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
+    #dominant_color = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
 
     return clt.cluster_centers_ 
 
@@ -330,24 +331,37 @@ def drawPoints(frame):
             frame = cv2.line(frame, sets_of_points[j]["points"][i], end_of_line, color=color_to_use, thickness=3)
     return frame
 
-def treat_contour(contour, i):
-    global color_occurencies_in_contours, ready_contours
+def treat_contour(i):
+    global color_occurencies_in_contours, ready_contours, sets_of_points, Exit #, contours_treat_enabled
 
-    # create a mask of the contour to blackout any colors surounding it
-    mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
-    cv2.fillPoly(mask, pts =[contour["points"]], color=(255,255,255))
-    res = cv2.bitwise_and(frame, frame, mask = mask)
+    '''
+    mask = None
+    while not Exit:
+        
+        cv2.waitKey(1)
+        if keyboard.is_pressed('q') == True:
+            Exit = True
 
+        if not contours_treat_enabled[i]:
+            continue
+        
+        contours_treat_enabled[i] = False
+    '''
     # crop the image down to the contour only to prevent too much calculation and less black in the image
-    x,y,w,h = contour["size_and_location"]
-    ROI = res[y:y+h, x:x+w]
+    x,y,w,h = sets_of_points[i]["size_and_location"]
+    frame_temp = frame[y:y+h, x:x+w]
+    
+    # create a mask of the contour to blackout any colors surounding it
+    mask = np.zeros((frame_temp.shape[0], frame_temp.shape[1]), dtype=np.uint8)
+    cv2.fillPoly(mask, pts=[sets_of_points[i]["points"]], color=(255,255,255))
+    mask = mask[y:y+h, x:x+w]
+    ROI = cv2.bitwise_and(frame_temp, frame_temp, mask = mask)
 
     # Display the resulting frame
-    #a = np.ones((50, 50, 3), dtype=np.uint8)
     max_colors = 4
     start = time.time()
     cds = get_dominant_color(ROI, k=max_colors, image_processing_size=(25, 25)) # (25, 25) worked
-    #print("done within", (time.time()-start), "seconds")
+    print("contour done within", (time.time()-start), "seconds")
 
     #colorsss = np.zeros((200, 50*max_colors, 3), dtype=np.uint8)
     color_occurencies = [0, 0, 0, 0, 0, 0] # all six colors
@@ -356,13 +370,13 @@ def treat_contour(contour, i):
         rgb = tuple(cds[j])
 
         hsv = convert_rgb_to_hsv(rgb)
-        if contour["enabled"]: # only show colors of enabled contours inside the colors gui
+        if sets_of_points[i]["enabled"]: # only show colors of enabled contours inside the colors gui
             hsvs.append(hsv)
 
         # Dominant colors display, ranked left to right
-            h_occurencies = 0
-            s_occurencies = 0
-            v_occurencies = 0
+        h_occurencies = 0
+        s_occurencies = 0
+        v_occurencies = 0
         for data in colors:
             index = -1
             h_occurencies = 0
@@ -377,7 +391,7 @@ def treat_contour(contour, i):
                 if hsv[2] >= each_range["min"][2] and hsv[2] <= each_range["max"][2]:
                     v_occurencies += 1
 
-            if h_occurencies>0 or s_occurencies>0 or v_occurencies>0:
+            if h_occurencies>0 and s_occurencies>0 and v_occurencies>0:
                 maxer = max([h_occurencies*5, s_occurencies*1, v_occurencies*1])
                 if data["name"] == "yellow":
                     color_occurencies[0] += maxer
@@ -492,20 +506,22 @@ def treat_predictions(previous_predictions, contours_to_treat, desired_contours_
 
 called = False
 def treat_footage():
-    global hsvs, ready_contours, frame, Exit, called
+    global hsvs, ready_contours, frame, Exit, called #, contours_treat_enabled
 
     treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
     #treat_color_range_selector_gui_thread.setDaemon(True)
     treat_color_range_selector_gui_thread.start()
 
     debug_motor_testors_thread = Thread(target = debug_motor_testors)
-    debug_motor_testors_thread
+    #debug_motor_testors_thread.setDaemon(True)
+    debug_motor_testors_thread.start()
 
     vid = cv2.VideoCapture(2)
     recordings = 0
     texts_to_draw = []
     start_time2 = time.time()
     start_time = time.time()
+    frame_time = time.time()
     ready_contours = []
     finished_a_reading = False
     contours_to_treat = []
@@ -526,15 +542,16 @@ def treat_footage():
                 ready_contours = []
                 called = True
                 for i in range(0, len(sets_of_points)):
-                    
+
                     # ignore any currently being made contour
                     if i == len(sets_of_points) - 1:
                         if drawing:
                             continue # skip it because it's not a complete contour
 
                     if i in contours_to_treat:
-                        Thread(target = treat_contour, args=[sets_of_points[i], i]).start()
-                        #treat_contour(sets_of_points[i], i)
+                        #contours_treat_enabled[i] = True
+                        Thread(target = treat_contour, args=[i]).start()
+                        #treat_contour(i)
                     else:
                         ready_contours.append(i)
 
@@ -550,6 +567,7 @@ def treat_footage():
                 recordings = 0
                 texts_to_draw = []
                 temp_color_occurencies_in_contours = color_occurencies_in_contours.copy() # to avoid the next iteration modifying it
+                reinit_color_occurencies()
                 for i in range(0, len(temp_color_occurencies_in_contours)):
                     if not i in contours_to_treat:
                         continue
@@ -595,6 +613,7 @@ def treat_footage():
             # color segmentation texts for each contour along with their order number
             for text in texts_to_draw:
                 draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
+            texts_to_draw = []
 
         cv2.imshow('frame', frame)
         cv2.setMouseCallback('frame', line_drawing)
@@ -606,6 +625,8 @@ def treat_footage():
             
         # do whatever we want with our predictions stored inside
         if finished_a_reading:
+            print("frame", (time.time()-frame_time), "secs")
+            frame_time = time.time()
             finished_a_reading = False
             #contours_to_treat = treat_predictions(predictions, contours_to_treat, desired_contours_count=desired_contours_count)
 
@@ -627,6 +648,7 @@ def debug_motor_testors():
     global serial, Exit
     
     while not Exit:
+        cv2.waitKey(1)
         if keyboard.is_pressed('l') == True:
             serial = send_command(serial, "MOVE r")
             serial = send_command(serial, "MOTORS RESET")
@@ -635,6 +657,8 @@ def debug_motor_testors():
             serial = send_command(serial, "MOTORS RESET")
         if keyboard.is_pressed('q') == True:
             Exit = True
+
+            
     '''
     time.sleep(1)
     '''
@@ -653,10 +677,17 @@ def treat_footage2():
             Exit = True
 
 
+contours_treat_enabled = []
 def main():
-    global serial
+    global serial, contours_treat_enabled
     serial = send_command(serial, "START")
 
+    '''
+    threads_count_to_create = 27
+    contours_treat_enabled = [False for i in range(0, threads_count_to_create)]
+    for i in range(0, threads_count_to_create):
+        Thread(target = treat_contour, args=[i]).start()
+    '''
 
     treat_footage()
     #treat_footage_thread = Thread(target = treat_footage)
