@@ -68,7 +68,7 @@ Servo left_sleeve, left_wrist, up_sleeve, up_wrist, down_sleeve, down_wrist, bac
 // DEFINTIONS: Predefined angles
 // LEFT MECHANISM
 int left_cw_start = 5, left_cw_end = 124, left_acw_start = 106, left_acw_end = 0;
-int left_sleeve_back = 163, left_sleeve_forth = 46;
+int left_sleeve_back = 165, left_sleeve_forth = 0;
 int left_sleeve_val = left_sleeve_back, left_wrist_val = left_cw_start;
 
 // up MECHANISM
@@ -77,19 +77,19 @@ int up_sleeve_back = 180, up_sleeve_forth = 0;
 int up_sleeve_val = up_sleeve_back, up_wrist_val = up_cw_start;
 
 // down MECHANISM
-int down_cw_start = 180, down_cw_end = 67, down_acw_start = 0, down_acw_end = 118;
-int down_sleeve_back = 180, down_sleeve_forth = 41;
+int down_cw_start = 180, down_cw_end = 87, down_acw_start = 0, down_acw_end = 110;
+int down_sleeve_back = 180, down_sleeve_forth = 63;
 int down_sleeve_val = down_sleeve_back, down_wrist_val = down_cw_start;
 
 // BACK MECHANISM
 int up_assist_angle = 158, up_sleeve_assist_angle = 1;
 int back_cw_start = 20, back_cw_end = 138, back_acw_start = 127, back_acw_end = 5;
-int back_sleeve_back = 151, back_sleeve_forth = 0;
+int back_sleeve_back = 180, back_sleeve_forth = 0;
 int back_sleeve_val = back_sleeve_back, back_wrist_val = back_cw_start;
 
 // RIGHT MECHANISM
 int right_cw_start = 9, right_cw_end = 129, right_acw_start = 108, right_acw_end = 0;
-int right_sleeve_back = 180, right_sleeve_forth = 0;
+int right_sleeve_back = 165, right_sleeve_forth = 0;
 int right_sleeve_val = right_sleeve_back, right_wrist_val = right_cw_start;
 
 int moves_index = 0;
@@ -143,13 +143,13 @@ void receiveCommand() {
       return;
 
     // only allow selecting faces if we're in debug
-    if (debugging) {
+    //if (debugging) {
       if (command == "SELECT") {
-        selectFace(command);
+        selectFace(request);
         Serial.println("Ok");
         return;
       }
-    }
+    //}
 
     if (command == "DEBUG") {
       String state = getValue(request, ' ', 1);
@@ -179,7 +179,7 @@ void receiveCommand() {
     } else if (command == "ANGLE") {
       String face = getValue(request, ' ', 1);
       if (face != "") {
-        String rest_of_command = getValue(request, ' ', 2);
+        String rest_of_command = getValue(request, ' ', 2) + " " + getValue(request, ' ', 3);
         setAngle(face, rest_of_command);
         Serial.println("Ok");
         return;
@@ -200,10 +200,17 @@ void preprocessManualAngleSet(String value, Servo &sleeve, Servo &wrist, int &mi
     applyPotentiometerToFace(sleeve, wrist, max_s, typical_w);
   } else {
     int val = getValue(value, ' ', 1).toInt();
+    Serial.println(val);
+    Serial.println(up_sleeve_back);
+    Serial.println("yes");
+    Serial.println(up_sleeve_val);
+    Serial.println(typical_s);
     if (getValue(value, ' ', 0) == "W") {
-      applyPotentiometerToFace(sleeve, wrist, typical_s, val);
+      //applyPotentiometerToFace(sleeve, wrist, typical_s, val);
+      go(wrist, typical_w, val, MEDIUM_SPEED);
     } else {
-      applyPotentiometerToFace(sleeve, wrist, val, typical_w);
+      //applyPotentiometerToFace(sleeve, wrist, val, typical_w);
+      go(sleeve, typical_s, val, MEDIUM_SPEED);
     }
   }
 }

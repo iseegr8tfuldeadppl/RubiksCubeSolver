@@ -7,7 +7,7 @@ def send_command(serial, command):
     while True:
 
         if serial==None or not serial.isOpen():
-            serial = Setup_serial("COM14")
+            serial = Setup_serial("COM4")
             print("Reconnecting")
         else:
             _, bundle = Read(serial, False)

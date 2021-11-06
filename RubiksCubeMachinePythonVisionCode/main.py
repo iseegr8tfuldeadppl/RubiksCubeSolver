@@ -12,6 +12,15 @@ from color_tools import *
 from important_constants import *
 from general_tools import draw_text
 import keyboard
+import requests
+from io import BytesIO
+from PIL import Image
+
+def url_to_img(url, save_as=''):
+  img = Image.open(BytesIO(requests.get(url).content))
+  if save_as:
+    img.save(save_as)
+  return np.array(img)
 
 
 drawing = False # true if mouse is pressed
@@ -76,7 +85,8 @@ hsvs = []
 def treat_color_range_selector_gui():
     global contours, hsvs, Exit
     while not Exit:
-        window = np.zeros((height*6*3, width, 3), dtype=np.uint8)
+        window = np.zeros((height*6*3 + height, width, 3), dtype=np.uint8)
+        #window = window*255
         contours = [[], [], []]
         for scheme in range(0, 3):
             color_index = -1
@@ -84,11 +94,16 @@ def treat_color_range_selector_gui():
             # draw the actual detected colors here for reference
             for hsv in hsvs:
                 x = int( (width - bar_width) * hsv[0] / 180 )
-                window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), (255, 255, 255), -1)
+                window = cv2.rectangle(window, (x, int(height/2)), (x + bar_width, height), convert_hsv_to_rgb((hsv[0], 255, 255)), -1)
                 x = int( (width - bar_width) * hsv[1] / 255 )
-                window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), (255, 255, 255), -1)
+                window = cv2.rectangle(window, (x, height*6+int(height/2)), (x + bar_width, height*6 + height), convert_hsv_to_rgb((hsv[0], 255, 255)), -1)
                 x = int( (width - bar_width) * hsv[2] / 255 )
-                window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), (255, 255, 255), -1)
+                window = cv2.rectangle(window, (x, 2*height*6+int(height/2)), (x + bar_width, 2*height*6 + height), convert_hsv_to_rgb((hsv[0], 255, 255)), -1)
+                
+                divisions = 50
+                for i in range(0, divisions):
+                    window = cv2.rectangle(window, (int(i*width/divisions), height*6*3), (int(i*width/divisions + width/divisions), height*6*3 + int(height/2)), convert_hsv_to_rgb((i*180/divisions, 255, 255)), -1)
+
                 #hsvs.remove(hsv)
 
             for data in colors:
@@ -352,15 +367,16 @@ def treat_contour(i):
     frame_temp = frame[y:y+h, x:x+w]
     
     # create a mask of the contour to blackout any colors surounding it
-    mask = np.zeros((frame_temp.shape[0], frame_temp.shape[1]), dtype=np.uint8)
+    mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
     cv2.fillPoly(mask, pts=[sets_of_points[i]["points"]], color=(255,255,255))
     mask = mask[y:y+h, x:x+w]
     ROI = cv2.bitwise_and(frame_temp, frame_temp, mask = mask)
+    cv2.imwrite("yes.jpg", mask)
 
     # Display the resulting frame
     max_colors = 4
     start = time.time()
-    cds = get_dominant_color(ROI, k=max_colors, image_processing_size=(25, 25)) # (25, 25) worked
+    cds = get_dominant_color(ROI, k=max_colors) # (25, 25) worked , image_processing_size=(10, 10)
     print("contour done within", (time.time()-start), "seconds")
 
     #colorsss = np.zeros((200, 50*max_colors, 3), dtype=np.uint8)
@@ -369,7 +385,13 @@ def treat_contour(i):
     for j in range(0, max_colors_used):
         rgb = tuple(cds[j])
 
+        rgb = (abs(round(rgb[0])), abs(round(rgb[1])), abs(round(rgb[2])))
+
+        if rgb[0]==0 and rgb[1]==0 and rgb[2]==0:
+            continue
+
         hsv = convert_rgb_to_hsv(rgb)
+
         if sets_of_points[i]["enabled"]: # only show colors of enabled contours inside the colors gui
             hsvs.append(hsv)
 
@@ -384,15 +406,20 @@ def treat_contour(i):
             v_occurencies = 0
             for each_range in data["ranges"]:
                 index += 1
-                if hsv[0] >= each_range["min"][0] and hsv[0] <= each_range["max"][0]:
-                    h_occurencies += 1
-                if hsv[1] >= each_range["min"][1] and hsv[1] <= each_range["max"][1]:
-                    s_occurencies += 1
-                if hsv[2] >= each_range["min"][2] and hsv[2] <= each_range["max"][2]:
-                    v_occurencies += 1
+                delta = 5
+                if abs(each_range["max"][0] - each_range["min"][0]) > delta:
+                    if (hsv[0] >= each_range["min"][0] and hsv[0] <= each_range["max"][0]) or hsv[0] >= each_range["max"][0] and hsv[0] <= each_range["min"][0]:
+                        h_occurencies += 1
+                if abs(each_range["max"][1] - each_range["min"][1]) > delta:
+                    if (hsv[1] >= each_range["min"][1] and hsv[1] <= each_range["max"][1]) or hsv[1] >= each_range["max"][1] and hsv[1] <= each_range["min"][1]:
+                        s_occurencies += 1
+                if abs(each_range["max"][1] - each_range["min"][1]) > delta:
+                    if (hsv[2] >= each_range["min"][2] and hsv[2] <= each_range["max"][2]) or hsv[2] >= each_range["max"][2] and hsv[2] <= each_range["min"][2]:
+                        v_occurencies += 1
 
             if h_occurencies>0 and s_occurencies>0 and v_occurencies>0:
                 maxer = max([h_occurencies*5, s_occurencies*1, v_occurencies*1])
+                #maxer = h_occurencies
                 if data["name"] == "yellow":
                     color_occurencies[0] += maxer
                 elif data["name"] == "blue":
@@ -508,15 +535,19 @@ called = False
 def treat_footage():
     global hsvs, ready_contours, frame, Exit, called #, contours_treat_enabled
 
-    treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
-    #treat_color_range_selector_gui_thread.setDaemon(True)
-    treat_color_range_selector_gui_thread.start()
-
+    '''
     debug_motor_testors_thread = Thread(target = debug_motor_testors)
     #debug_motor_testors_thread.setDaemon(True)
     debug_motor_testors_thread.start()
 
-    vid = cv2.VideoCapture(2)
+    quit()
+    '''
+
+    treat_color_range_selector_gui_thread = Thread(target = treat_color_range_selector_gui)
+    #treat_color_range_selector_gui_thread.setDaemon(True)
+    treat_color_range_selector_gui_thread.start()
+
+    #vid = cv2.VideoCapture("http://192.168.43.11:8080/shot.jpg")
     recordings = 0
     texts_to_draw = []
     start_time2 = time.time()
@@ -530,9 +561,11 @@ def treat_footage():
     while not Exit:
         predictions = [-1 for i in range(0, len(sets_of_points))]
         # Capture the video frame
-        ret, frame = vid.read()
+        #ret, frame = vid.read()
+        frame = url_to_img('http://192.168.43.11:8080/shot.jpg')
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        if time.time() - start_time2 > start_delay:
+        if True or time.time() - start_time2 > start_delay:
 
             # if color occurencies array wasn't updated yet then update it
             if len(color_occurencies_in_contours) < len(sets_of_points):
@@ -613,7 +646,7 @@ def treat_footage():
             # color segmentation texts for each contour along with their order number
             for text in texts_to_draw:
                 draw_text(frame, text["text"], font_scale=1, pos=text["pos"], text_color_bg=(0, 0, 0))
-            texts_to_draw = []
+            #texts_to_draw = []
 
         cv2.imshow('frame', frame)
         cv2.setMouseCallback('frame', line_drawing)
@@ -649,15 +682,40 @@ def debug_motor_testors():
     
     while not Exit:
         cv2.waitKey(1)
-        if keyboard.is_pressed('l') == True:
-            serial = send_command(serial, "MOVE r")
-            serial = send_command(serial, "MOTORS RESET")
+        if keyboard.is_pressed('e') == True:
+            print("e")
+            ##serial = send_command(serial, "MOVE l")
         if keyboard.is_pressed('r') == True:
-            serial = send_command(serial, "MOVE R")
-            serial = send_command(serial, "MOTORS RESET")
+            print("r")
+            #serial = send_command(serial, "MOVE r")
+        if keyboard.is_pressed('t') == True:
+            print("t")
+            #serial = send_command(serial, "MOVE b")
+        if keyboard.is_pressed('y') == True:
+            print("y")
+            #serial = send_command(serial, "MOVE u")
+        if keyboard.is_pressed('u') == True:
+            print("u")
+            #serial = send_command(serial, "MOVE d")
+            
+        if keyboard.is_pressed('d') == True:
+            print("d")
+            #serial = send_command(serial, "MOVE L")
+        if keyboard.is_pressed('f') == True:
+            print("f")
+            #serial = send_command(serial, "MOVE R")
+        if keyboard.is_pressed('g') == True:
+            print("g")
+            #serial = send_command(serial, "MOVE B")
+        if keyboard.is_pressed('h') == True:
+            print("h")
+            #serial = send_command(serial, "MOVE U")
+        if keyboard.is_pressed('j') == True:
+            print("j")
+            #serial = send_command(serial, "MOVE D")
+
         if keyboard.is_pressed('q') == True:
             Exit = True
-
             
     '''
     time.sleep(1)
@@ -665,10 +723,13 @@ def debug_motor_testors():
 
 def treat_footage2():
     global frame2, Exit
-    vid2 = cv2.VideoCapture(0)
+    #vid2 = cv2.VideoCapture(0)
     while not Exit:
-        ret, frame2 = vid2.read()
+        #ret, frame2 = vid2.read()
+        frame2 = url_to_img('http://192.168.43.11:8080/shot.jpg')
+        #frame2 = cv2.imread("http://192.168.43.11:8080/shot.jpg")
 
+        frame2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
         cv2.imshow('frame2', frame2)
 
         # if we pressed exit stop
@@ -680,7 +741,7 @@ def treat_footage2():
 contours_treat_enabled = []
 def main():
     global serial, contours_treat_enabled
-    serial = send_command(serial, "START")
+    #serial = send_command(serial, "START")
 
     '''
     threads_count_to_create = 27
