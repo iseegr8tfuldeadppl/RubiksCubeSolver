@@ -11,7 +11,7 @@ boolean bottom_turning=false, front_turning=false, left_turning=false, back_turn
 int bottom_speed = 50, front_speed = 50, left_speed = 50, back_speed = 50, right_speed = 50;
 
 int bottom_turntime=220, front_turntime=195, left_turntime=220, back_turntime=220, right_turntime=220;
-int bottom_rest_angle=95, front_rest_angle=90, left_rest_angle=10, back_rest_angle=0, right_rest_angle=127;
+int bottom_rest_angle=94, front_rest_angle=94, left_rest_angle=94, back_rest_angle=94, right_rest_angle=94;
 
 void setup() {
   Serial.begin(9600);
