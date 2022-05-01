@@ -22,6 +22,7 @@ void setup() {
   Serial.begin(9600);
   //servo.attach(servoPin, 100, 2900);
   servo.attach(servoPin);
+  servo.write(90);
 }
 
 long double_turn = 1000;
@@ -42,7 +43,7 @@ void loop() {
       maxi += upper;
       Serial.println("applying min " + String(lower) + " and maxi " + String(maxi));
       servo.attach(servoPin, lower, maxi);
-      servo.writeMicroseconds(maxi);
+      //servo.writeMicroseconds(maxi);
       
     } else if(command=="RESET" || command=="re" || command=="RE"){
       Serial.println("resetting");
