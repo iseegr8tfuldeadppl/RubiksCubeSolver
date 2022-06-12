@@ -1,4 +1,3 @@
-Best_F2L_Algorithms.pdf
 *.stl
 *.gcode
 *.3ml
@@ -6,3 +5,5 @@ Best_F2L_Algorithms.pdf
 *.mp4
 *.pyc
 *.3mf
+*.pdf
+*.mk4
