@@ -101,13 +101,14 @@ void serial(){
       i = 0;
       while(i < parts_of_msg[1].length()){
         if(i < parts_of_msg[1].length() - 1){
-          if(parts_of_msg[1][i+1] == '\'')
+          if(parts_of_msg[1][i+1] == '\''){
             turn(parts_of_msg[1][i], -defaultSteps);
-          else if(parts_of_msg[1][i+1] == '2')
+            i++;
+          } else if(parts_of_msg[1][i+1] == '2') {
             turn(parts_of_msg[1][i], defaultSteps*2);
-          else
+            i++;
+          } else
             turn(parts_of_msg[1][i], defaultSteps);
-          i++;
         } else {
           turn(parts_of_msg[1][i], defaultSteps);
         }
