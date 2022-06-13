@@ -83,6 +83,10 @@ void loop() {
   serial();
 }
 
+
+long defaultSteps = 200;
+int i=0;
+
 void serial(){
   
   // SERIAL: receive commands from serial
@@ -94,17 +98,54 @@ void serial(){
 
     if(parts_of_msg[0] == "SEQUENCE"){ // SEQUENCE <Faces>    ex. SEQUENCE RUru   (sequence of turns, upper case=clockwise, lower case=anti-clockwise)
       // loop over each move of this sequence and execute it
-      for(int i=0; i<parts_of_msg[1].length(); i++){
-        turn(parts_of_msg[1][i], 200);
+      i = 0;
+      while(i < parts_of_msg[1].length()){
+        if(i < parts_of_msg[1].length() - 1){
+          if(parts_of_msg[1][i+1] == '\'')
+            turn(parts_of_msg[1][i], -defaultSteps);
+          else if(parts_of_msg[1][i+1] == '2')
+            turn(parts_of_msg[1][i], defaultSteps*2);
+          else
+            turn(parts_of_msg[1][i], defaultSteps);
+          i++;
+        } else {
+          turn(parts_of_msg[1][i], defaultSteps);
+        }
         //delay(100);
+        i += 1;
       }
       Serial.println("Ok, finished the sequence " + String(parts_of_msg[1]));
       return;
     }
 
-    if(parts_of_msg[0] == "MTURN"){ // MTURN <Face name> <amount>    ex. TURN F 200  (manual turn)
+    if(parts_of_msg[0] == "MMOVE"){ // MMOVE <Face>    ex. MMOVE F2   or F'    or F
+        if(parts_of_msg[1].length() > 1){
+          if(parts_of_msg[1][1] == '\'')
+            turn(parts_of_msg[1][0], -defaultSteps);
+          else if(parts_of_msg[1][1] == '2')
+            turn(parts_of_msg[1][0], defaultSteps*2);
+          else
+            turn(parts_of_msg[1][0], defaultSteps);
+        } else {
+          turn(parts_of_msg[1][0], defaultSteps);
+        }
+      Serial.println("Ok, finished the manual move " + String(parts_of_msg[1]));
+      return;
+    }
+
+    if(parts_of_msg[0] == "MTURN"){ // MTURN <Face name> <amount>    ex. TURN  F2   or F'    or F 200  (manual turn)
       serialLongValue = parts_of_msg[2].toInt();
-      turn(parts_of_msg[1][0], serialLongValue);
+      
+      if(parts_of_msg[1].length() > 1){
+        if(parts_of_msg[1][1] == '\'')
+          turn(parts_of_msg[1][0], -serialLongValue);
+        else if(parts_of_msg[1][1] == '2')
+          turn(parts_of_msg[1][0], serialLongValue*2);
+        else
+          turn(parts_of_msg[1][0], serialLongValue);
+      } else {
+        turn(parts_of_msg[1][0], serialLongValue);
+      }
       Serial.println("Ok, finished manual turn of the " + String(parts_of_msg[1]) + " face by " + String(serialLongValue) + " steps");
       return;
     }
@@ -115,38 +156,23 @@ void serial(){
 }
 
 void turn(char letter, long steps){
-  if(letter == 'D'){
-    moveStepper(0, steps);
-  } else if(letter == 'd'){
+  if(letter == 'F'){
     moveStepper(0, -steps);
-    
   } else if(letter == 'L'){
     moveStepper(1, steps);
-  } else if(letter == 'l'){
-    moveStepper(1, -steps);
-    
   } else if(letter == 'R'){
-    moveStepper(2, steps);
-  } else if(letter == 'r'){
     moveStepper(2, -steps);
-    
-  } else if(letter == 'B'){
+  } else if(letter == 'D'){
     moveStepper(3, steps);
-  } else if(letter == 'b'){
-    moveStepper(3, -steps);
-    
-  } else if(letter == 'F'){
-    moveStepper(4, steps);
-  } else if(letter == 'f'){
+  } else if(letter == 'B'){
     moveStepper(4, -steps);
-    
   } else {
     Serial.println("OOF, Unknown turn name " + String(letter));
   }
 }
 
 void moveStepper(int index, long amount){
-  Serial.println("Ok, Moving stepper " + String(index+1) + " by " + String(amount) + " steps");
+  //Serial.println("Ok, Moving stepper " + String(index+1) + " by " + String(amount) + " steps");
   digitalWrite(SteppersEns[index], HIGH);
   Steppers[index].step(amount);
   digitalWrite(SteppersEns[index], LOW);
