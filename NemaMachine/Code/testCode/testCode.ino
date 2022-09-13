@@ -53,6 +53,7 @@ void setup() {
 
   // INIT: Serial
   Serial.begin(9600);
+  while(!Serial){}
 
   // INIT: Stepper
   for(int i=0; i<steppers_count; i++){
@@ -60,6 +61,9 @@ void setup() {
     pinMode(SteppersEns[i], OUTPUT);
     digitalWrite(SteppersEns[i], LOW); // disable pin
   }
+  Serial.println("Ok, BTW You're overriding speed for B motor");
+  Steppers[3].setSpeed(400);
+  Steppers[4].setSpeed(400);
   
 
   // LOAD: Stepper location value from eeprom from last execution
@@ -164,9 +168,19 @@ void turn(char letter, long steps){
   } else if(letter == 'R'){
     moveStepper(2, -steps);
   } else if(letter == 'D'){
-    moveStepper(3, steps);
+    steps /= 2;
+    if(abs(steps)==defaultSteps){
+      moveStepper(3, steps<0 ? steps+5 : steps-5);
+    } else {
+      moveStepper(3, steps<0 ? steps+10 : steps-10);
+    }
   } else if(letter == 'B'){
-    moveStepper(4, -steps);
+    steps /= 2;
+    if(abs(steps)==defaultSteps){
+      moveStepper(4, steps<0 ? -(steps+5) : -(steps-5));
+    } else {
+      moveStepper(4, steps<0 ? -(steps+10) : -(steps-10));
+    }
   } else {
     Serial.println("OOF, Unknown turn name " + String(letter));
   }
