@@ -170,9 +170,9 @@ void turn(char letter, long steps){
   } else if(letter == 'D'){
     steps /= 2;
     if(abs(steps)==defaultSteps){
-      moveStepper(3, steps<0 ? steps+5 : steps-5);
+      moveStepper(3, steps<0 ? steps+3 : steps-3);
     } else {
-      moveStepper(3, steps<0 ? steps+10 : steps-10);
+      moveStepper(3, steps<0 ? steps+6 : steps-6);
     }
   } else if(letter == 'B'){
     steps /= 2;
